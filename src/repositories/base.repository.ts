@@ -42,10 +42,12 @@ export interface QueryResult<T> {
 export abstract class BaseRepository<T extends CoreModel<any>> {
     protected readonly tableName: string;
     protected readonly modelType: string;
+    protected readonly dynamoDB: DynamoDB.DocumentClient;
 
     constructor(tableName: string, modelType: string) {
         this.tableName = tableName;
         this.modelType = modelType;
+        this.dynamoDB = dynamoDB;
     }
 
     /**
@@ -196,6 +198,37 @@ export abstract class BaseRepository<T extends CoreModel<any>> {
             };
         } catch (error) {
             _err(`[${this.modelType}] Scan failed:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Scan with filter expression
+     */
+    protected async scanWithFilter(
+        filterExpression: string,
+        expressionAttributeValues: any,
+        expressionAttributeNames?: any,
+        options?: QueryOptions,
+    ): Promise<QueryResult<T>> {
+        const params: DynamoDB.DocumentClient.ScanInput = {
+            TableName: this.tableName,
+            FilterExpression: filterExpression,
+            ExpressionAttributeValues: expressionAttributeValues,
+            ExpressionAttributeNames: expressionAttributeNames,
+            Limit: options?.limit || 100,
+            ExclusiveStartKey: options?.nextToken ? JSON.parse(options.nextToken) : undefined,
+        };
+
+        try {
+            const result = await dynamoDB.scan(params).promise();
+            return {
+                items: (result.Items as T[]) || [],
+                nextToken: result.LastEvaluatedKey ? JSON.stringify(result.LastEvaluatedKey) : undefined,
+                count: result.Count || 0,
+            };
+        } catch (error) {
+            _err(`[${this.modelType}] Scan with filter failed:`, error);
             throw error;
         }
     }
