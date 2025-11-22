@@ -1,0 +1,10 @@
+{
+  "verbose": false,
+  "ignore": [".git", "node_modules/**/node_modules"],
+  "ignoreRoot": [".git", "node_modules"],
+  "execMap": {
+    "js": "node"
+  },
+  "watch": ["dist/"],
+  "ext": "js,json"
+}

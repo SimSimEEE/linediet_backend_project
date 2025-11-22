@@ -1,0 +1,12 @@
+# Development Environment
+local:
+  NAME: 'linediet-appointment-api'
+  STAGE: 'local'
+
+dev:
+  NAME: 'linediet-appointment-api'
+  STAGE: 'dev'
+
+prod:
+  NAME: 'linediet-appointment-api'
+  STAGE: 'prod'
