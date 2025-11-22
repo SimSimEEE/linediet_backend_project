@@ -114,8 +114,6 @@ export class AppointmentService {
      * Search appointments by booker info
      */
     async searchAppointments(params: AppointmentSearchParams): Promise<AppointmentModel[]> {
-        const encryptedPhone = encrypt(params.bookerPhone);
-
         let appointments: AppointmentModel[];
 
         if (params.appointmentDate) {
@@ -126,10 +124,22 @@ export class AppointmentService {
             appointments = result.items;
         }
 
-        // Filter by name and phone
-        const filtered = appointments.filter(
-            (apt) => apt.bookerName === params.bookerName && apt.bookerPhone === encryptedPhone && !apt.deletedAt,
-        );
+        // Filter by name and phone (partial match for name, exact match for decrypted phone)
+        const filtered = appointments.filter((apt) => {
+            if (apt.deletedAt) return false;
+
+            let matches = true;
+            if (params.bookerName && !apt.bookerName?.includes(params.bookerName)) {
+                matches = false;
+            }
+            if (params.bookerPhone) {
+                const decryptedPhone = apt.bookerPhone ? decrypt(apt.bookerPhone) : '';
+                if (decryptedPhone !== params.bookerPhone) {
+                    matches = false;
+                }
+            }
+            return matches;
+        });
 
         return this.populateAppointments(filtered);
     }
