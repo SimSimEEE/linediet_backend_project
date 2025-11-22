@@ -80,6 +80,10 @@ export class VisitService {
         }
 
         // Verify doctor exists
+        if (!data.doctorId) {
+            throw new Error('E_INVALID_INPUT: Doctor ID is required');
+        }
+
         const doctor = await this.doctorRepo.getById(data.doctorId);
         if (!doctor) {
             throw new Error('E_NOT_FOUND: Doctor not found');
