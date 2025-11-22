@@ -5,7 +5,6 @@
  * @author      Sim Ugeun
  * @date        2025-01-22
  *
- * Copyright (C) 2025 LineDiet - All Rights Reserved.
  */
 import { Request, Response } from 'express';
 import { DoctorService } from '../services/doctor.service';

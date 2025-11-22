@@ -5,7 +5,7 @@
  * @author      Sim Ugeun
  * @date        2025-01-22
  *
- * Copyright (C) 2025 LineDiet - All Rights Reserved.
+ 
  */
 import * as CryptoJS from 'crypto-js';
 import { $U } from '../cores/commons';

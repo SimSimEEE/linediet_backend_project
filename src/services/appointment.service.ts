@@ -5,7 +5,6 @@
  * @author      Sim Ugeun
  * @date        2025-01-22
  *
- * Copyright (C) 2025 LineDiet - All Rights Reserved.
  */
 import { AppointmentModel, AppointmentQueryParams, AppointmentSearchParams } from '../models';
 import { AppointmentRepository, PatientRepository, DoctorRepository } from '../repositories';
