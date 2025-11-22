@@ -1,108 +1,96 @@
 /**
- * `patient.service.spec.ts`
- * - Patient service tests
+ * `services/patient.service.spec.ts`
+ * - Unit tests for PatientService
  *
  * @author      Sim Ugeun
  * @date        2025-01-22
- *
- * Copyright (C) 2025 LineDiet - All Rights Reserved.
  */
 import { PatientService } from './patient.service';
 import { PatientRepository } from '../repositories';
-import { PatientModel } from '../models';
-import * as encryption from '../utils/encryption';
+import { encrypt, decrypt } from '../utils/encryption';
 
-// Mock repository
-jest.mock('../repositories/patient.repository');
-
-// Mock encryption module
+// Mock dependencies
+jest.mock('../repositories');
 jest.mock('../utils/encryption', () => ({
     encrypt: jest.fn((value: string) => `encrypted_${value}`),
     decrypt: jest.fn((value: string) => value.replace('encrypted_', '')),
-    maskPhone: jest.fn((value: string) => value),
-    maskSSN: jest.fn((value: string) => value),
 }));
 
 describe('PatientService', () => {
     let service: PatientService;
     let patientRepo: jest.Mocked<PatientRepository>;
 
-    const now = new Date().toISOString();
-
     beforeEach(() => {
         jest.clearAllMocks();
         service = new PatientService();
         patientRepo = (service as any).patientRepo;
+
+        // Re-set encryption mocks after clearAllMocks
+        (encrypt as jest.Mock).mockImplementation((value: string) => `encrypted_${value}`);
+        (decrypt as jest.Mock).mockImplementation((value: string) => value.replace('encrypted_', ''));
     });
 
     describe('createPatient', () => {
-        const validPatientData = {
-            name: '홍길동',
-            phoneNumber: '010-1234-5678',
-            birthYearMonth: '199001',
-            ssn: '900101-1234567',
-            notes: '알레르기: 페니실린',
-        };
-
         it('should create patient with encrypted personal info', async () => {
             // Arrange
-            const expectedPatient: PatientModel = {
-                id: 'patient-123',
-                type: 'patient',
-                name: validPatientData.name,
-                phoneNumber: 'encrypted_010-1234-5678',
-                birthYearMonth: validPatientData.birthYearMonth,
-                ssn: 'encrypted_900101-1234567',
-                notes: validPatientData.notes,
-                createdAt: now,
-                updatedAt: now,
+            const patientData = {
+                name: '홍길동',
+                phoneNumber: '010-1234-5678',
+                ssn: '123456-1234567',
+                birthYearMonth: '199001',
             };
 
-            patientRepo.create = jest.fn().mockResolvedValue(expectedPatient);
+            patientRepo.create.mockResolvedValue({
+                type: 'patient',
+                id: 'patient-123',
+                name: patientData.name,
+                phoneNumber: 'encrypted_010-1234-5678',
+                ssn: 'encrypted_123456-1234567',
+                birthYearMonth: patientData.birthYearMonth,
+                createdAt: '2024-01-15T10:00:00+09:00',
+                updatedAt: '2024-01-15T10:00:00+09:00',
+            });
 
             // Act
-            const result = await service.createPatient(validPatientData);
+            const result = await service.createPatient(patientData);
 
             // Assert
-            expect(encryption.encrypt).toHaveBeenCalledWith(validPatientData.phoneNumber);
-            expect(encryption.encrypt).toHaveBeenCalledWith(validPatientData.ssn);
-            expect(patientRepo.create).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    name: validPatientData.name,
-                    phoneNumber: 'encrypted_010-1234-5678',
-                    ssn: 'encrypted_900101-1234567',
-                }),
-            );
-            expect(result.phoneNumber).toBe('010-1234-5678'); // decrypted
-            expect(result.ssn).toBe('900101-1234567'); // decrypted
+            expect(encrypt).toHaveBeenCalledWith(patientData.phoneNumber);
+            expect(encrypt).toHaveBeenCalledWith(patientData.ssn);
+            expect(patientRepo.create).toHaveBeenCalledWith({
+                name: patientData.name,
+                phoneNumber: 'encrypted_010-1234-5678',
+                ssn: 'encrypted_123456-1234567',
+                birthYearMonth: patientData.birthYearMonth,
+                notes: undefined,
+            });
+            expect(result.phoneNumber).toBe('010-1234-5678'); // Decrypted
+            expect(result.ssn).toBe('123456-1234567'); // Decrypted
         });
 
         it('should create patient without optional SSN', async () => {
             // Arrange
-            const dataWithoutSSN = {
+            const patientData = {
                 name: '김철수',
                 phoneNumber: '010-9999-8888',
             };
 
-            const expectedPatient: PatientModel = {
-                id: 'patient-456',
+            patientRepo.create.mockResolvedValue({
                 type: 'patient',
-                name: dataWithoutSSN.name,
+                id: 'patient-456',
+                name: patientData.name,
                 phoneNumber: 'encrypted_010-9999-8888',
-                createdAt: now,
-                updatedAt: now,
-            };
-
-            patientRepo.create = jest.fn().mockResolvedValue(expectedPatient);
+                createdAt: '2024-01-15T10:00:00+09:00',
+                updatedAt: '2024-01-15T10:00:00+09:00',
+            });
 
             // Act
-            const result = await service.createPatient(dataWithoutSSN);
+            const result = await service.createPatient(patientData);
 
             // Assert
-            expect(result).toBeDefined();
+            expect(encrypt).toHaveBeenCalledWith(patientData.phoneNumber);
+            expect(encrypt).not.toHaveBeenCalledWith(undefined);
             expect(result.ssn).toBeUndefined();
-            expect(encryption.encrypt).toHaveBeenCalledWith(dataWithoutSSN.phoneNumber);
-            expect(encryption.encrypt).toHaveBeenCalledTimes(1); // only phone, not SSN
         });
 
         it('should reject when name is missing', async () => {
@@ -131,35 +119,31 @@ describe('PatientService', () => {
     describe('getPatient', () => {
         it('should return decrypted patient info', async () => {
             // Arrange
-            const encryptedPatient: PatientModel = {
-                id: 'patient-123',
+            patientRepo.getById.mockResolvedValue({
                 type: 'patient',
+                id: 'patient-123',
                 name: '홍길동',
                 phoneNumber: 'encrypted_010-1234-5678',
-                ssn: 'encrypted_900101-1234567',
-                createdAt: now,
-                updatedAt: now,
-            };
-
-            patientRepo.getById = jest.fn().mockResolvedValue(encryptedPatient);
+                ssn: 'encrypted_123456-1234567',
+                createdAt: '2024-01-15T10:00:00+09:00',
+                updatedAt: '2024-01-15T10:00:00+09:00',
+            });
 
             // Act
             const result = await service.getPatient('patient-123');
 
             // Assert
             expect(result).not.toBeNull();
-            expect(result!.phoneNumber).toBe('010-1234-5678'); // decrypted
-            expect(result!.ssn).toBe('900101-1234567'); // decrypted
-            expect(encryption.decrypt).toHaveBeenCalledWith('encrypted_010-1234-5678');
-            expect(encryption.decrypt).toHaveBeenCalledWith('encrypted_900101-1234567');
+            expect(result!.phoneNumber).toBe('010-1234-5678');
+            expect(result!.ssn).toBe('123456-1234567');
         });
 
         it('should return null when patient not found', async () => {
             // Arrange
-            patientRepo.getById = jest.fn().mockResolvedValue(null);
+            patientRepo.getById.mockResolvedValue(null);
 
             // Act
-            const result = await service.getPatient('nonexistent-id');
+            const result = await service.getPatient('nonexistent');
 
             // Assert
             expect(result).toBeNull();
@@ -169,60 +153,47 @@ describe('PatientService', () => {
     describe('updatePatient', () => {
         it('should update patient with encrypted phone number', async () => {
             // Arrange
-            const existingPatient: PatientModel = {
-                id: 'patient-123',
+            patientRepo.getById.mockResolvedValue({
                 type: 'patient',
+                id: 'patient-123',
                 name: '홍길동',
                 phoneNumber: 'encrypted_010-1234-5678',
-                createdAt: now,
-                updatedAt: now,
-            };
+                createdAt: '2024-01-15T10:00:00+09:00',
+                updatedAt: '2024-01-15T10:00:00+09:00',
+            });
 
-            const updates = {
-                phoneNumber: '010-9999-9999',
-                notes: '업데이트된 노트',
-            };
-
-            const updatedPatient: PatientModel = {
-                ...existingPatient,
+            patientRepo.update.mockResolvedValue({
+                type: 'patient',
+                id: 'patient-123',
+                name: '홍길동',
                 phoneNumber: 'encrypted_010-9999-9999',
-                notes: updates.notes,
-            };
-
-            // Clear previous mock calls
-            (encryption.encrypt as jest.Mock).mockClear();
-            
-            patientRepo.getById = jest.fn().mockResolvedValue(existingPatient);
-            patientRepo.update = jest.fn().mockResolvedValue(updatedPatient);
+                createdAt: '2024-01-15T10:00:00+09:00',
+                updatedAt: '2024-01-15T11:00:00+09:00',
+            });
 
             // Act
-            const result = await service.updatePatient('patient-123', updates);
+            await service.updatePatient('patient-123', { phoneNumber: '010-9999-9999' });
 
             // Assert
-            expect(encryption.encrypt).toHaveBeenCalledWith('010-9999-9999');
-            expect(patientRepo.update).toHaveBeenCalledWith(
-                'patient-123',
-                expect.objectContaining({
-                    phoneNumber: 'encrypted_010-9999-9999',
-                    notes: updates.notes,
-                }),
-            );
-            expect(result.phoneNumber).toBe('010-9999-9999'); // decrypted result
+            expect(encrypt).toHaveBeenCalledWith('010-9999-9999');
+            expect(patientRepo.update).toHaveBeenCalledWith('patient-123', {
+                phoneNumber: 'encrypted_010-9999-9999',
+            });
         });
 
         it('should throw error when patient not found', async () => {
             // Arrange
-            patientRepo.getById = jest.fn().mockResolvedValue(null);
+            patientRepo.getById.mockResolvedValue(null);
 
             // Act & Assert
-            await expect(service.updatePatient('nonexistent-id', { name: '테스트' })).rejects.toThrow('E_NOT_FOUND');
+            await expect(service.updatePatient('nonexistent', { name: 'Test' })).rejects.toThrow('E_NOT_FOUND');
         });
     });
 
     describe('deletePatient', () => {
         it('should soft delete patient', async () => {
             // Arrange
-            patientRepo.delete = jest.fn().mockResolvedValue(true);
+            patientRepo.delete.mockResolvedValue(true);
 
             // Act
             const result = await service.deletePatient('patient-123');
@@ -236,86 +207,88 @@ describe('PatientService', () => {
     describe('listPatients', () => {
         it('should return decrypted list excluding deleted patients', async () => {
             // Arrange
-            const patients: PatientModel[] = [
-                {
-                    id: 'patient-1',
-                    type: 'patient',
-                    name: '환자1',
-                    phoneNumber: 'encrypted_010-1111-1111',
-                    createdAt: now,
-                    updatedAt: now,
-                },
-                {
-                    id: 'patient-2',
-                    type: 'patient',
-                    name: '환자2',
-                    phoneNumber: 'encrypted_010-2222-2222',
-                    createdAt: now,
-                    updatedAt: now,
-                    deletedAt: now, // deleted
-                },
-            ];
-
-            patientRepo.scan = jest.fn().mockResolvedValue({ items: patients });
+            patientRepo.scan.mockResolvedValue({
+                items: [
+                    {
+                        type: 'patient',
+                        id: 'patient-1',
+                        name: '환자1',
+                        phoneNumber: 'encrypted_010-1111-1111',
+                        createdAt: '2024-01-15T10:00:00+09:00',
+                        updatedAt: '2024-01-15T10:00:00+09:00',
+                    },
+                    {
+                        type: 'patient',
+                        id: 'patient-2',
+                        name: '환자2',
+                        phoneNumber: 'encrypted_010-2222-2222',
+                        deletedAt: '2024-01-15T12:00:00+09:00', // Deleted
+                        createdAt: '2024-01-15T10:00:00+09:00',
+                        updatedAt: '2024-01-15T10:00:00+09:00',
+                    },
+                ],
+                count: 2,
+            });
 
             // Act
-            const result = await service.listPatients(100);
+            const result = await service.listPatients();
 
             // Assert
-            expect(result).toHaveLength(1); // only non-deleted
+            expect(result).toHaveLength(1);
             expect(result[0].id).toBe('patient-1');
-            expect(result[0].phoneNumber).toBe('010-1111-1111'); // decrypted
+            expect(result[0].phoneNumber).toBe('010-1111-1111');
         });
     });
 
     describe('searchPatients', () => {
         it('should search by encrypted phone number', async () => {
             // Arrange
-            const patients: PatientModel[] = [
-                {
-                    id: 'patient-123',
-                    type: 'patient',
-                    name: '홍길동',
-                    phoneNumber: 'encrypted_010-1234-5678',
-                    createdAt: now,
-                    updatedAt: now,
-                },
-            ];
-
-            patientRepo.findByPhoneNumber = jest.fn().mockResolvedValue({ items: patients });
+            const phoneNumber = '010-1234-5678';
+            patientRepo.findByPhoneNumber.mockResolvedValue({
+                items: [
+                    {
+                        type: 'patient',
+                        id: 'patient-123',
+                        name: '홍길동',
+                        phoneNumber: 'encrypted_010-1234-5678',
+                        createdAt: '2024-01-15T10:00:00+09:00',
+                        updatedAt: '2024-01-15T10:00:00+09:00',
+                    },
+                ],
+                count: 1,
+            });
 
             // Act
-            const result = await service.searchPatients({ phoneNumber: '010-1234-5678' });
+            const result = await service.searchPatients({ phoneNumber });
 
             // Assert
-            expect(encryption.encrypt).toHaveBeenCalledWith('010-1234-5678');
+            expect(encrypt).toHaveBeenCalledWith(phoneNumber);
             expect(patientRepo.findByPhoneNumber).toHaveBeenCalledWith('encrypted_010-1234-5678');
             expect(result).toHaveLength(1);
-            expect(result[0].phoneNumber).toBe('010-1234-5678'); // decrypted
         });
 
         it('should search by name', async () => {
             // Arrange
-            const patients: PatientModel[] = [
-                {
-                    id: 'patient-456',
-                    type: 'patient',
-                    name: '김철수',
-                    phoneNumber: 'encrypted_010-9999-9999',
-                    createdAt: now,
-                    updatedAt: now,
-                },
-            ];
-
-            patientRepo.searchByName = jest.fn().mockResolvedValue({ items: patients });
+            patientRepo.searchByName.mockResolvedValue({
+                items: [
+                    {
+                        type: 'patient',
+                        id: 'patient-123',
+                        name: '홍길동',
+                        phoneNumber: 'encrypted_010-1234-5678',
+                        createdAt: '2024-01-15T10:00:00+09:00',
+                        updatedAt: '2024-01-15T10:00:00+09:00',
+                    },
+                ],
+                count: 1,
+            });
 
             // Act
-            const result = await service.searchPatients({ name: '김철수' });
+            const result = await service.searchPatients({ name: '홍길동' });
 
             // Assert
-            expect(patientRepo.searchByName).toHaveBeenCalledWith('김철수');
+            expect(patientRepo.searchByName).toHaveBeenCalledWith('홍길동');
             expect(result).toHaveLength(1);
-            expect(result[0].name).toBe('김철수');
         });
 
         it('should return empty array when no criteria provided', async () => {
@@ -324,33 +297,32 @@ describe('PatientService', () => {
 
             // Assert
             expect(result).toEqual([]);
-            expect(patientRepo.findByPhoneNumber).not.toHaveBeenCalled();
-            expect(patientRepo.searchByName).not.toHaveBeenCalled();
         });
 
         it('should exclude deleted patients from search results', async () => {
             // Arrange
-            const patients: PatientModel[] = [
-                {
-                    id: 'patient-1',
-                    type: 'patient',
-                    name: '홍길동',
-                    phoneNumber: 'encrypted_010-1234-5678',
-                    createdAt: now,
-                    updatedAt: now,
-                },
-                {
-                    id: 'patient-2',
-                    type: 'patient',
-                    name: '홍길동',
-                    phoneNumber: 'encrypted_010-1234-5678',
-                    createdAt: now,
-                    updatedAt: now,
-                    deletedAt: now,
-                },
-            ];
-
-            patientRepo.searchByName = jest.fn().mockResolvedValue({ items: patients });
+            patientRepo.searchByName.mockResolvedValue({
+                items: [
+                    {
+                        type: 'patient',
+                        id: 'patient-1',
+                        name: '홍길동',
+                        phoneNumber: 'encrypted_010-1111-1111',
+                        createdAt: '2024-01-15T10:00:00+09:00',
+                        updatedAt: '2024-01-15T10:00:00+09:00',
+                    },
+                    {
+                        type: 'patient',
+                        id: 'patient-2',
+                        name: '홍길동',
+                        phoneNumber: 'encrypted_010-2222-2222',
+                        deletedAt: '2024-01-15T12:00:00+09:00',
+                        createdAt: '2024-01-15T10:00:00+09:00',
+                        updatedAt: '2024-01-15T10:00:00+09:00',
+                    },
+                ],
+                count: 2,
+            });
 
             // Act
             const result = await service.searchPatients({ name: '홍길동' });

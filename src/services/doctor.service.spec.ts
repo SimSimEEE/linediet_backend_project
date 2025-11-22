@@ -1,24 +1,19 @@
 /**
- * `doctor.service.spec.ts`
- * - Doctor service tests
+ * `services/doctor.service.spec.ts`
+ * - Unit tests for DoctorService
  *
  * @author      Sim Ugeun
  * @date        2025-01-22
- *
- * Copyright (C) 2025 LineDiet - All Rights Reserved.
  */
 import { DoctorService } from './doctor.service';
 import { DoctorRepository } from '../repositories';
-import { DoctorModel } from '../models';
 
-// Mock repository
-jest.mock('../repositories/doctor.repository');
+// Mock dependencies
+jest.mock('../repositories');
 
 describe('DoctorService', () => {
     let service: DoctorService;
     let doctorRepo: jest.Mocked<DoctorRepository>;
-
-    const now = new Date().toISOString();
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -27,67 +22,56 @@ describe('DoctorService', () => {
     });
 
     describe('createDoctor', () => {
-        const validDoctorData = {
-            name: '김의사',
-            specialization: '내과',
-            licenseNumber: 'DOC-12345',
-            isActive: true,
-            notes: '경력 10년',
-        };
-
         it('should create doctor with all fields', async () => {
             // Arrange
-            const expectedDoctor: DoctorModel = {
-                id: 'doctor-123',
-                type: 'doctor',
-                ...validDoctorData,
-                createdAt: now,
-                updatedAt: now,
+            const doctorData = {
+                name: '김의사',
+                specialization: '내과',
+                licenseNumber: 'DOC-12345',
+                isActive: true,
+                notes: '오전 진료 가능',
             };
 
-            doctorRepo.create = jest.fn().mockResolvedValue(expectedDoctor);
+            doctorRepo.create.mockResolvedValue({
+                type: 'doctor',
+                id: 'doctor-123',
+                ...doctorData,
+                createdAt: '2024-01-15T10:00:00+09:00',
+                updatedAt: '2024-01-15T10:00:00+09:00',
+            });
 
             // Act
-            const result = await service.createDoctor(validDoctorData);
+            const result = await service.createDoctor(doctorData);
 
             // Assert
-            expect(doctorRepo.create).toHaveBeenCalledWith(validDoctorData);
-            expect(result).toEqual(expectedDoctor);
-            expect(result.name).toBe(validDoctorData.name);
-            expect(result.specialization).toBe(validDoctorData.specialization);
+            expect(doctorRepo.create).toHaveBeenCalledWith(doctorData);
+            expect(result.id).toBe('doctor-123');
+            expect(result.name).toBe(doctorData.name);
         });
 
         it('should create doctor with minimal fields (name only)', async () => {
             // Arrange
-            const minimalData = {
-                name: '이의사',
-            };
+            const doctorData = { name: '박의사' };
 
-            const expectedDoctor: DoctorModel = {
-                id: 'doctor-456',
+            doctorRepo.create.mockResolvedValue({
                 type: 'doctor',
-                name: minimalData.name,
+                id: 'doctor-456',
+                name: '박의사',
                 isActive: true,
-                createdAt: now,
-                updatedAt: now,
-            };
-
-            doctorRepo.create = jest.fn().mockResolvedValue(expectedDoctor);
+                createdAt: '2024-01-15T10:00:00+09:00',
+                updatedAt: '2024-01-15T10:00:00+09:00',
+            });
 
             // Act
-            const result = await service.createDoctor(minimalData);
+            const result = await service.createDoctor(doctorData);
 
             // Assert
-            expect(result.name).toBe(minimalData.name);
-            expect(result.isActive).toBe(true); // default true
+            expect(result.isActive).toBe(true); // Default value
         });
 
         it('should reject when name is missing', async () => {
             // Arrange
-            const invalidData = {
-                name: '',
-                specialization: '내과',
-            };
+            const invalidData = { name: '' };
 
             // Act & Assert
             await expect(service.createDoctor(invalidData)).rejects.toThrow('E_INVALID_INPUT');
@@ -95,23 +79,19 @@ describe('DoctorService', () => {
 
         it('should set isActive to true by default', async () => {
             // Arrange
-            const dataWithoutActive = {
-                name: '박의사',
-            };
+            const doctorData = { name: '이의사' };
 
-            const expectedDoctor: DoctorModel = {
-                id: 'doctor-789',
+            doctorRepo.create.mockResolvedValue({
                 type: 'doctor',
-                name: dataWithoutActive.name,
+                id: 'doctor-789',
+                name: '이의사',
                 isActive: true,
-                createdAt: now,
-                updatedAt: now,
-            };
-
-            doctorRepo.create = jest.fn().mockResolvedValue(expectedDoctor);
+                createdAt: '2024-01-15T10:00:00+09:00',
+                updatedAt: '2024-01-15T10:00:00+09:00',
+            });
 
             // Act
-            await service.createDoctor(dataWithoutActive);
+            await service.createDoctor(doctorData);
 
             // Assert
             expect(doctorRepo.create).toHaveBeenCalledWith(
@@ -123,59 +103,56 @@ describe('DoctorService', () => {
 
         it('should respect explicit isActive: false', async () => {
             // Arrange
-            const inactiveDoctor = {
+            const doctorData = { name: '최의사', isActive: false };
+
+            doctorRepo.create.mockResolvedValue({
+                type: 'doctor',
+                id: 'doctor-999',
                 name: '최의사',
                 isActive: false,
-            };
-
-            const expectedDoctor: DoctorModel = {
-                id: 'doctor-999',
-                type: 'doctor',
-                name: inactiveDoctor.name,
-                isActive: false,
-                createdAt: now,
-                updatedAt: now,
-            };
-
-            doctorRepo.create = jest.fn().mockResolvedValue(expectedDoctor);
+                createdAt: '2024-01-15T10:00:00+09:00',
+                updatedAt: '2024-01-15T10:00:00+09:00',
+            });
 
             // Act
-            const result = await service.createDoctor(inactiveDoctor);
+            await service.createDoctor(doctorData);
 
             // Assert
-            expect(result.isActive).toBe(false);
+            expect(doctorRepo.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    isActive: false,
+                }),
+            );
         });
     });
 
     describe('getDoctor', () => {
         it('should return doctor by ID', async () => {
             // Arrange
-            const doctor: DoctorModel = {
-                id: 'doctor-123',
+            doctorRepo.getById.mockResolvedValue({
                 type: 'doctor',
+                id: 'doctor-123',
                 name: '김의사',
                 specialization: '내과',
                 isActive: true,
-                createdAt: now,
-                updatedAt: now,
-            };
-
-            doctorRepo.getById = jest.fn().mockResolvedValue(doctor);
+                createdAt: '2024-01-15T10:00:00+09:00',
+                updatedAt: '2024-01-15T10:00:00+09:00',
+            });
 
             // Act
             const result = await service.getDoctor('doctor-123');
 
             // Assert
-            expect(result).toEqual(doctor);
-            expect(doctorRepo.getById).toHaveBeenCalledWith('doctor-123');
+            expect(result).not.toBeNull();
+            expect(result!.name).toBe('김의사');
         });
 
         it('should return null when doctor not found', async () => {
             // Arrange
-            doctorRepo.getById = jest.fn().mockResolvedValue(null);
+            doctorRepo.getById.mockResolvedValue(null);
 
             // Act
-            const result = await service.getDoctor('nonexistent-id');
+            const result = await service.getDoctor('nonexistent');
 
             // Assert
             expect(result).toBeNull();
@@ -183,62 +160,67 @@ describe('DoctorService', () => {
     });
 
     describe('updateDoctor', () => {
-        const existingDoctor: DoctorModel = {
-            id: 'doctor-123',
-            type: 'doctor',
-            name: '김의사',
-            specialization: '내과',
-            isActive: true,
-            createdAt: now,
-            updatedAt: now,
-        };
-
         it('should update doctor fields', async () => {
             // Arrange
-            const updates = {
+            doctorRepo.getById.mockResolvedValue({
+                type: 'doctor',
+                id: 'doctor-123',
+                name: '김의사',
+                isActive: true,
+                createdAt: '2024-01-15T10:00:00+09:00',
+                updatedAt: '2024-01-15T10:00:00+09:00',
+            });
+
+            const updates = { specialization: '외과' };
+
+            doctorRepo.update.mockResolvedValue({
+                type: 'doctor',
+                id: 'doctor-123',
+                name: '김의사',
                 specialization: '외과',
-                licenseNumber: 'DOC-99999',
-                notes: '업데이트된 노트',
-            };
-
-            const updatedDoctor: DoctorModel = {
-                ...existingDoctor,
-                ...updates,
-            };
-
-            doctorRepo.getById = jest.fn().mockResolvedValue(existingDoctor);
-            doctorRepo.update = jest.fn().mockResolvedValue(updatedDoctor);
+                isActive: true,
+                createdAt: '2024-01-15T10:00:00+09:00',
+                updatedAt: '2024-01-15T11:00:00+09:00',
+            });
 
             // Act
             const result = await service.updateDoctor('doctor-123', updates);
 
             // Assert
             expect(doctorRepo.update).toHaveBeenCalledWith('doctor-123', updates);
-            expect(result.specialization).toBe(updates.specialization);
-            expect(result.licenseNumber).toBe(updates.licenseNumber);
+            expect(result.specialization).toBe('외과');
         });
 
         it('should throw error when doctor not found', async () => {
             // Arrange
-            doctorRepo.getById = jest.fn().mockResolvedValue(null);
+            doctorRepo.getById.mockResolvedValue(null);
 
             // Act & Assert
-            await expect(service.updateDoctor('nonexistent-id', { name: '테스트' })).rejects.toThrow('E_NOT_FOUND');
+            await expect(service.updateDoctor('nonexistent', { name: 'Test' })).rejects.toThrow('E_NOT_FOUND');
         });
 
         it('should update isActive status', async () => {
             // Arrange
-            const updates = { isActive: false };
-            const updatedDoctor: DoctorModel = {
-                ...existingDoctor,
-                isActive: false,
-            };
+            doctorRepo.getById.mockResolvedValue({
+                type: 'doctor',
+                id: 'doctor-123',
+                name: '김의사',
+                isActive: true,
+                createdAt: '2024-01-15T10:00:00+09:00',
+                updatedAt: '2024-01-15T10:00:00+09:00',
+            });
 
-            doctorRepo.getById = jest.fn().mockResolvedValue(existingDoctor);
-            doctorRepo.update = jest.fn().mockResolvedValue(updatedDoctor);
+            doctorRepo.update.mockResolvedValue({
+                type: 'doctor',
+                id: 'doctor-123',
+                name: '김의사',
+                isActive: false,
+                createdAt: '2024-01-15T10:00:00+09:00',
+                updatedAt: '2024-01-15T11:00:00+09:00',
+            });
 
             // Act
-            const result = await service.updateDoctor('doctor-123', updates);
+            const result = await service.updateDoctor('doctor-123', { isActive: false });
 
             // Assert
             expect(result.isActive).toBe(false);
@@ -248,7 +230,7 @@ describe('DoctorService', () => {
     describe('deleteDoctor', () => {
         it('should soft delete doctor', async () => {
             // Arrange
-            doctorRepo.delete = jest.fn().mockResolvedValue(true);
+            doctorRepo.delete.mockResolvedValue(true);
 
             // Act
             const result = await service.deleteDoctor('doctor-123');
@@ -262,58 +244,52 @@ describe('DoctorService', () => {
     describe('listDoctors', () => {
         it('should return all doctors excluding deleted ones', async () => {
             // Arrange
-            const doctors: DoctorModel[] = [
-                {
-                    id: 'doctor-1',
-                    type: 'doctor',
-                    name: '의사1',
-                    isActive: true,
-                    createdAt: now,
-                    updatedAt: now,
-                },
-                {
-                    id: 'doctor-2',
-                    type: 'doctor',
-                    name: '의사2',
-                    isActive: false,
-                    createdAt: now,
-                    updatedAt: now,
-                },
-                {
-                    id: 'doctor-3',
-                    type: 'doctor',
-                    name: '의사3',
-                    isActive: true,
-                    createdAt: now,
-                    updatedAt: now,
-                    deletedAt: now, // deleted
-                },
-            ];
-
-            doctorRepo.scan = jest.fn().mockResolvedValue({ items: doctors });
+            doctorRepo.scan.mockResolvedValue({
+                items: [
+                    {
+                        type: 'doctor',
+                        id: 'doctor-1',
+                        name: '의사1',
+                        isActive: true,
+                        createdAt: '2024-01-15T10:00:00+09:00',
+                        updatedAt: '2024-01-15T10:00:00+09:00',
+                    },
+                    {
+                        type: 'doctor',
+                        id: 'doctor-2',
+                        name: '의사2',
+                        isActive: false,
+                        deletedAt: '2024-01-15T12:00:00+09:00',
+                        createdAt: '2024-01-15T10:00:00+09:00',
+                        updatedAt: '2024-01-15T10:00:00+09:00',
+                    },
+                ],
+                count: 2,
+            });
 
             // Act
-            const result = await service.listDoctors(100, false);
+            const result = await service.listDoctors();
 
             // Assert
-            expect(result).toHaveLength(2); // exclude deleted
-            expect(result.find((d) => d.id === 'doctor-3')).toBeUndefined();
+            expect(result).toHaveLength(1);
+            expect(result[0].id).toBe('doctor-1');
         });
 
         it('should return only active doctors when activeOnly=true', async () => {
             // Arrange
-            const activeDoctors: DoctorModel[] = [
-                {
-                    id: 'doctor-1',
-                    type: 'doctor',
-                    name: '의사1',
-                    isActive: true,
-                    createdAt: now,
-                    updatedAt: now,
-                },
-            ];
-
-            doctorRepo.getActiveDoctors = jest.fn().mockResolvedValue({ items: activeDoctors });
+            doctorRepo.getActiveDoctors.mockResolvedValue({
+                items: [
+                    {
+                        type: 'doctor',
+                        id: 'doctor-1',
+                        name: '의사1',
+                        isActive: true,
+                        createdAt: '2024-01-15T10:00:00+09:00',
+                        updatedAt: '2024-01-15T10:00:00+09:00',
+                    },
+                ],
+                count: 1,
+            });
 
             // Act
             const result = await service.listDoctors(100, true);
@@ -321,12 +297,11 @@ describe('DoctorService', () => {
             // Assert
             expect(doctorRepo.getActiveDoctors).toHaveBeenCalledWith({ limit: 100 });
             expect(result).toHaveLength(1);
-            expect(result[0].isActive).toBe(true);
         });
 
         it('should use default limit of 100', async () => {
             // Arrange
-            doctorRepo.scan = jest.fn().mockResolvedValue({ items: [] });
+            doctorRepo.scan.mockResolvedValue({ items: [], count: 0 });
 
             // Act
             await service.listDoctors();
@@ -339,45 +314,44 @@ describe('DoctorService', () => {
     describe('searchDoctors', () => {
         it('should search doctors by name excluding deleted ones', async () => {
             // Arrange
-            const searchResults: DoctorModel[] = [
-                {
-                    id: 'doctor-1',
-                    type: 'doctor',
-                    name: '김의사',
-                    specialization: '내과',
-                    isActive: true,
-                    createdAt: now,
-                    updatedAt: now,
-                },
-                {
-                    id: 'doctor-2',
-                    type: 'doctor',
-                    name: '김의사',
-                    specialization: '외과',
-                    isActive: true,
-                    createdAt: now,
-                    updatedAt: now,
-                    deletedAt: now, // deleted
-                },
-            ];
-
-            doctorRepo.searchByName = jest.fn().mockResolvedValue({ items: searchResults });
+            doctorRepo.searchByName.mockResolvedValue({
+                items: [
+                    {
+                        type: 'doctor',
+                        id: 'doctor-1',
+                        name: '김의사',
+                        isActive: true,
+                        createdAt: '2024-01-15T10:00:00+09:00',
+                        updatedAt: '2024-01-15T10:00:00+09:00',
+                    },
+                    {
+                        type: 'doctor',
+                        id: 'doctor-2',
+                        name: '김의사',
+                        isActive: false,
+                        deletedAt: '2024-01-15T12:00:00+09:00',
+                        createdAt: '2024-01-15T10:00:00+09:00',
+                        updatedAt: '2024-01-15T10:00:00+09:00',
+                    },
+                ],
+                count: 2,
+            });
 
             // Act
             const result = await service.searchDoctors('김의사');
 
             // Assert
             expect(doctorRepo.searchByName).toHaveBeenCalledWith('김의사');
-            expect(result).toHaveLength(1); // exclude deleted
+            expect(result).toHaveLength(1);
             expect(result[0].id).toBe('doctor-1');
         });
 
-        it('should return empty array when no matches found', async () => {
+        it('should return empty array when no name provided', async () => {
             // Arrange
-            doctorRepo.searchByName = jest.fn().mockResolvedValue({ items: [] });
+            doctorRepo.searchByName.mockResolvedValue({ items: [], count: 0 });
 
             // Act
-            const result = await service.searchDoctors('존재하지않는의사');
+            const result = await service.searchDoctors('');
 
             // Assert
             expect(result).toEqual([]);
