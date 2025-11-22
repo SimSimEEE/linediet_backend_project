@@ -29,18 +29,16 @@
 - ✅ 에러 코드 체계 (E_DUPLICATED, E_NOT_FOUND, E_INVALID_INPUT, E_PAST_TIME 등)
 - ✅ Serverless Framework 기반 AWS Lambda 배포 구성
 - ✅ Express.js 기반 로컬 개발 서버
-
-### 부분 구현
-
-- ⚠️ 내원-접수 API (구조만 정의, 구현 미완)
-- ⚠️ Patient, Doctor CRUD API (Repository는 완성, Controller 미구현)
-- ⚠️ 단위 테스트 (구조만 설정)
+- ✅ Patient, Doctor, Visit CRUD API (Controller 포함)
+- ✅ 단위 테스트 54개 (모든 서비스 계층 검증)
+- ✅ 통합 테스트 (Express + Mock Repository)
+- ✅ Timezone 처리 (KST 기준, moment-timezone 활용)
 
 ### 미구현 (선택 사항)
 
-- ❌ 국제화 지원 (Timezone 처리)
-- ❌ Visit API 전체 구현
-- ❌ 통합 테스트
+- ❌ 실제 DynamoDB Local을 사용한 통합 테스트
+- ❌ Swagger UI 자동 생성
+- ❌ CI/CD 파이프라인
 
 ## 수행 중 가정한 사항
 
@@ -226,13 +224,71 @@ curl -X PUT http://localhost:8806/appointments/{appointmentId} \
 
 ## 테스트
 
+### 단위 테스트
+
+서비스 계층의 비즈니스 로직을 검증합니다.
+
 ```bash
-# 모든 테스트 실행
+# 모든 단위 테스트 실행
 npm test
 
 # Watch 모드로 테스트
 npm run test:watch
+
+# 커버리지 포함
+npm run test:coverage
 ```
+
+**테스트 파일 위치**: `src/services/*.spec.ts`
+
+**주요 테스트 항목**:
+- `appointment.service.spec.ts`: 예약 생성/조회/검색/취소/변경 (6개 테스트)
+- `patient.service.spec.ts`: 환자 CRUD 및 암호화 처리 (14개 테스트)
+- `doctor.service.spec.ts`: 진료의 CRUD 및 필터링 (16개 테스트)
+- `visit.service.spec.ts`: 내원 체크인/완료/이력 조회 (12개 테스트)
+
+### 통합 테스트
+
+실제 Express 서버와 메모리 데이터베이스를 사용한 E2E 테스트입니다.
+
+```bash
+# 통합 테스트만 실행
+npm run test:integration
+
+# Watch 모드
+npm run test:integration:watch
+```
+
+**테스트 파일 위치**: `src/__tests__/integration/*.test.ts`
+
+**주요 테스트 시나리오**:
+- `appointment.api.test.ts`: 예약 API 전체 플로우
+  - 예약 생성 → 조회 → 검색 → 변경 → 취소
+  - 중복 예약 방지
+  - 과거 시간 예약 거부
+  - 예약 부도 자동 감지
+
+- `patient.api.test.ts`: 환자 API 전체 플로우
+  - 환자 생성/조회/수정/삭제
+  - 이름/전화번호 검색
+  - 개인정보 암호화 검증
+
+- `doctor.api.test.ts`: 진료의 API 전체 플로우
+  - 진료의 생성/조회/수정/삭제
+  - 활성/비활성 상태 필터링
+  - 이름 검색
+
+- `visit.api.test.ts`: 내원 API 전체 플로우
+  - 초진 환자 체크인 (환자 정보 자동 생성)
+  - 재진 환자 체크인
+  - 진료 완료 처리
+  - 환자별 내원 이력 조회
+
+**통합 테스트 특징**:
+- 각 테스트는 독립적으로 실행됨 (격리된 환경)
+- supertest를 사용한 HTTP 요청 시뮬레이션
+- 메모리 기반 Mock Repository로 DB 의존성 제거
+- beforeEach/afterEach로 데이터 초기화
 
 ## 기타 의존성
 
