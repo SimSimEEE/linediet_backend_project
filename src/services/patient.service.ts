@@ -59,7 +59,7 @@ export class PatientService {
      */
     async getPatient(id: string): Promise<PatientModel | null> {
         const patient = await this.patientRepo.getById(id);
-        if (!patient) {
+        if (!patient || patient.deletedAt) {
             return null;
         }
         return this.decryptPatientInfo(patient);
@@ -70,7 +70,7 @@ export class PatientService {
      */
     async updatePatient(id: string, updates: Partial<PatientModel>): Promise<PatientModel> {
         const existing = await this.patientRepo.getById(id);
-        if (!existing) {
+        if (!existing || existing.deletedAt) {
             throw new Error('E_NOT_FOUND: Patient not found');
         }
 

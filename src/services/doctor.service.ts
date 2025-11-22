@@ -51,7 +51,12 @@ export class DoctorService {
      * Get doctor by ID
      */
     async getDoctor(id: string): Promise<DoctorModel | null> {
-        return await this.doctorRepo.getById(id);
+        const doctor = await this.doctorRepo.getById(id);
+        // Return null if doctor is soft-deleted
+        if (doctor && doctor.deletedAt) {
+            return null;
+        }
+        return doctor;
     }
 
     /**
@@ -59,7 +64,7 @@ export class DoctorService {
      */
     async updateDoctor(id: string, updates: Partial<DoctorModel>): Promise<DoctorModel> {
         const existing = await this.doctorRepo.getById(id);
-        if (!existing) {
+        if (!existing || existing.deletedAt) {
             throw new Error('E_NOT_FOUND: Doctor not found');
         }
 
