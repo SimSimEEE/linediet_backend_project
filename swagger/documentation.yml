@@ -1,0 +1,1243 @@
+openapi: 3.0.0
+
+info:
+  title: 한의원 진료 예약 관리 API
+  version: 1.0.0
+  description: |
+    한의원 SaaS (EMR) 서비스의 진료 예약 관리 API입니다.
+    
+    ## 주요 기능
+    - 예약 생성/조회/검색/취소/변경
+    - 예약 부도 자동 감지 (5분 주기)
+    - 개인정보 암호화 저장
+    - 진료의별, 날짜별 예약 조회
+    
+    ## 보안
+    - 개인정보(전화번호, 주민번호)는 AES-256 암호화
+    - 로깅 시 자동 마스킹
+  contact:
+    name: API Support
+    email: support@linediet.com
+  license:
+    name: MIT
+
+servers:
+  - url: https://api.linediet.com/v1
+    description: Production server
+  - url: https://dev-api.linediet.com/v1
+    description: Development server
+  - url: http://localhost:8806
+    description: Local development server
+
+tags:
+  - name: Appointments
+    description: 예약 관리 API
+  - name: Patients
+    description: 환자 관리 API
+  - name: Doctors
+    description: 진료의 관리 API
+  - name: Visits
+    description: 내원 관리 API
+  - name: Health
+    description: 헬스체크 API
+
+paths:
+  /:
+    get:
+      summary: 서비스 정보 조회
+      tags:
+        - Health
+      responses:
+        '200':
+          description: 서비스 정보
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    example: linediet-appointment-api
+                  version:
+                    type: string
+                    example: 1.0.0
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /health:
+    get:
+      summary: 헬스체크
+      tags:
+        - Health
+      responses:
+        '200':
+          description: 서버 상태 정상
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: OK
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /appointments:
+    get:
+      summary: 예약 조회
+      tags:
+        - Appointments
+      description: |
+        특정 날짜의 예약을 조회합니다.
+        진료의 ID나 환자 ID로 필터링할 수 있습니다.
+      parameters:
+        - name: appointmentDate
+          in: query
+          required: true
+          description: 예약 날짜 (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+            example: '2025-01-25'
+        - name: doctorId
+          in: query
+          required: false
+          description: 진료의 ID
+          schema:
+            type: string
+            example: doctor-001
+        - name: patientId
+          in: query
+          required: false
+          description: 환자 ID
+          schema:
+            type: string
+            example: patient-001
+        - name: includeAll
+          in: query
+          required: false
+          description: 취소/부도 예약 포함 여부
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: 예약 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Appointment'
+                  total:
+                    type: integer
+                    example: 10
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      summary: 예약 생성
+      tags:
+        - Appointments
+      description: |
+        새로운 예약을 생성합니다.
+        
+        **중요 사항:**
+        - 예약 시간은 30분 단위 (HH:00 또는 HH:30)
+        - 과거 시간으로 예약 불가
+        - 같은 진료의, 같은 시간에 중복 예약 불가
+        - 초진 환자는 예약자 정보 필수
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - doctorId
+                - bookerName
+                - bookerPhone
+                - appointmentDate
+                - appointmentTime
+              properties:
+                doctorId:
+                  type: string
+                  description: 진료의 ID
+                  example: doctor-001
+                patientId:
+                  type: string
+                  description: 환자 ID (재진 환자인 경우)
+                  example: patient-001
+                bookerName:
+                  type: string
+                  description: 예약자 이름
+                  example: 홍길동
+                bookerPhone:
+                  type: string
+                  description: 예약자 전화번호 (암호화되어 저장됨)
+                  example: '01012345678'
+                appointmentDate:
+                  type: string
+                  format: date
+                  description: 예약 날짜 (YYYY-MM-DD)
+                  example: '2025-01-25'
+                appointmentTime:
+                  type: string
+                  description: 예약 시간 (HH:00 또는 HH:30)
+                  example: '14:00'
+                  pattern: '^([0-1][0-9]|2[0-3]):(00|30)$'
+      responses:
+        '201':
+          description: 예약 생성 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '400':
+          description: 잘못된 입력 (과거 시간, 잘못된 시간 형식 등)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                pastTime:
+                  value:
+                    error: E_PAST_TIME
+                    message: 'Cannot book appointment in the past'
+                    code: E_PAST_TIME
+                invalidTime:
+                  value:
+                    error: E_INVALID_TIME
+                    message: 'Time must be in HH:00 or HH:30 format'
+                    code: E_INVALID_INPUT
+        '409':
+          description: 중복 예약
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: E_DUPLICATED
+                message: 'Doctor already has an appointment at this time'
+                code: E_DUPLICATED
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /appointments/search:
+    post:
+      summary: 예약 검색
+      tags:
+        - Appointments
+      description: 예약자 이름과 전화번호로 예약을 검색합니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - bookerName
+                - bookerPhone
+              properties:
+                bookerName:
+                  type: string
+                  description: 예약자 이름
+                  example: 홍길동
+                bookerPhone:
+                  type: string
+                  description: 예약자 전화번호
+                  example: '01012345678'
+                appointmentDate:
+                  type: string
+                  format: date
+                  description: 예약 날짜 (선택사항)
+                  example: '2025-01-25'
+      responses:
+        '200':
+          description: 검색된 예약 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Appointment'
+                  total:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /appointments/{id}:
+    put:
+      summary: 예약 변경
+      tags:
+        - Appointments
+      description: |
+        기존 예약을 변경합니다.
+        
+        **주의사항:**
+        - 과거 시간으로 변경 불가
+        - 변경된 시간에 다른 예약이 있으면 실패
+        - 취소된 예약도 되살릴 수 있음
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 예약 ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                appointmentDate:
+                  type: string
+                  format: date
+                  example: '2025-01-26'
+                appointmentTime:
+                  type: string
+                  example: '15:00'
+                status:
+                  type: string
+                  enum: [CONFIRMED, CANCELLED, NO_SHOW]
+                  example: CONFIRMED
+                notes:
+                  type: string
+                  example: 추가 메모
+      responses:
+        '200':
+          description: 예약 변경 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /appointments/{id}/cancel:
+    post:
+      summary: 예약 취소
+      tags:
+        - Appointments
+      description: 예약을 취소합니다. 이미 취소된 예약은 변경 없이 성공을 반환합니다.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 예약 ID
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: 취소 사유
+                  example: 개인 사정
+      responses:
+        '200':
+          description: 취소 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /patients:
+    post:
+      summary: 환자 생성
+      tags:
+        - Patients
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - phoneNumber
+              properties:
+                name:
+                  type: string
+                  example: "홍길동"
+                phoneNumber:
+                  type: string
+                  example: "010-1234-5678"
+                birthYearMonth:
+                  type: string
+                  example: "199001"
+                ssn:
+                  type: string
+                  example: "900101-1234567"
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: 환자 생성 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    get:
+      summary: 환자 목록 조회
+      tags:
+        - Patients
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: 환자 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Patient'
+                  count:
+                    type: integer
+
+  /patients/{id}:
+    get:
+      summary: 환자 조회
+      tags:
+        - Patients
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 환자 정보
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: 환자 정보 수정
+      tags:
+        - Patients
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                phoneNumber:
+                  type: string
+                birthYearMonth:
+                  type: string
+                ssn:
+                  type: string
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: 수정 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: 환자 삭제
+      tags:
+        - Patients
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: 삭제 성공
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /patients/search:
+    post:
+      summary: 환자 검색
+      tags:
+        - Patients
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                phoneNumber:
+                  type: string
+      responses:
+        '200':
+          description: 검색 결과
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Patient'
+                  count:
+                    type: integer
+
+  /doctors:
+    post:
+      summary: 진료의 생성
+      tags:
+        - Doctors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: "김한의"
+                specialization:
+                  type: string
+                  example: "침구과"
+                licenseNumber:
+                  type: string
+                isActive:
+                  type: boolean
+                  default: true
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: 진료의 생성 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Doctor'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    get:
+      summary: 진료의 목록 조회
+      tags:
+        - Doctors
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: activeOnly
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: 진료의 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Doctor'
+                  count:
+                    type: integer
+
+  /doctors/{id}:
+    get:
+      summary: 진료의 조회
+      tags:
+        - Doctors
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 진료의 정보
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Doctor'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: 진료의 정보 수정
+      tags:
+        - Doctors
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                specialization:
+                  type: string
+                licenseNumber:
+                  type: string
+                isActive:
+                  type: boolean
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: 수정 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Doctor'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: 진료의 삭제
+      tags:
+        - Doctors
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: 삭제 성공
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /doctors/search:
+    post:
+      summary: 진료의 검색
+      tags:
+        - Doctors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: 검색 결과
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Doctor'
+                  count:
+                    type: integer
+
+  /visits:
+    post:
+      summary: 내원 등록 (체크인)
+      tags:
+        - Visits
+      description: |
+        초진 환자의 경우 환자 정보를 함께 등록합니다.
+        재진 환자는 patientId만 제공하면 됩니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - doctorId
+              properties:
+                patientId:
+                  type: string
+                  description: 재진 환자 ID
+                doctorId:
+                  type: string
+                appointmentId:
+                  type: string
+                patientName:
+                  type: string
+                  description: 초진 환자 이름
+                phoneNumber:
+                  type: string
+                  description: 초진 환자 전화번호
+                ssn:
+                  type: string
+                  description: 초진 환자 주민번호
+                birthYearMonth:
+                  type: string
+                visitType:
+                  type: string
+                  enum: [first, follow-up]
+                chiefComplaint:
+                  type: string
+                  example: "허리 통증"
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: 내원 등록 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Visit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /visits/{id}:
+    get:
+      summary: 내원 조회
+      tags:
+        - Visits
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 내원 정보
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Visit'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: 내원 정보 수정
+      tags:
+        - Visits
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                chiefComplaint:
+                  type: string
+                diagnosis:
+                  type: string
+                treatment:
+                  type: string
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: 수정 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Visit'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /visits/{id}/complete:
+    post:
+      summary: 진료 완료
+      tags:
+        - Visits
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                diagnosis:
+                  type: string
+                treatment:
+                  type: string
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: 진료 완료 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Visit'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /visits/patient/{patientId}:
+    get:
+      summary: 환자별 내원 목록
+      tags:
+        - Visits
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: 내원 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Visit'
+                  count:
+                    type: integer
+
+  /visits/search:
+    post:
+      summary: 내원 검색 (날짜 범위)
+      tags:
+        - Visits
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - patientId
+                - startDate
+                - endDate
+              properties:
+                patientId:
+                  type: string
+                startDate:
+                  type: string
+                  format: date-time
+                endDate:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: 검색 결과
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Visit'
+                  count:
+                    type: integer
+
+components:
+  schemas:
+    Appointment:
+      type: object
+      properties:
+        id:
+          type: string
+          description: 예약 ID
+          example: appointment-1234567890-abc123
+        type:
+          type: string
+          enum: [appointment]
+          example: appointment
+        doctorId:
+          type: string
+          description: 진료의 ID
+          example: doctor-001
+        patientId:
+          type: string
+          description: 환자 ID (선택)
+          example: patient-001
+        bookerName:
+          type: string
+          description: 예약자 이름
+          example: 홍길동
+        bookerPhone:
+          type: string
+          description: 암호화된 예약자 전화번호
+          example: U2FsdGVkX1...
+        appointmentDate:
+          type: string
+          format: date
+          description: 예약 날짜
+          example: '2025-01-25'
+        appointmentTime:
+          type: string
+          description: 예약 시간
+          example: '14:00'
+        appointmentDateTime:
+          type: string
+          format: date-time
+          description: 예약 일시 (ISO 8601)
+          example: '2025-01-25T14:00:00+09:00'
+        status:
+          type: string
+          enum: [CONFIRMED, CANCELLED, NO_SHOW]
+          description: |
+            예약 상태
+            - CONFIRMED: 예약 완료
+            - CANCELLED: 예약 취소
+            - NO_SHOW: 예약 부도
+          example: CONFIRMED
+        cancelReason:
+          type: string
+          description: 취소 사유
+          example: 개인 사정
+        cancelledAt:
+          type: string
+          format: date-time
+          description: 취소 시각
+        noShowAt:
+          type: string
+          format: date-time
+          description: 부도 처리 시각
+        notes:
+          type: string
+          description: 메모
+        doctor$:
+          type: object
+          description: 진료의 정보 (populated)
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        patient$:
+          type: object
+          description: 환자 정보 (populated)
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        createdAt:
+          type: string
+          format: date-time
+          description: 생성 시각
+        updatedAt:
+          type: string
+          format: date-time
+          description: 수정 시각
+
+    Patient:
+      type: object
+      required:
+        - id
+        - name
+        - phoneNumber
+      properties:
+        id:
+          type: string
+          description: 환자 ID (UUID)
+          example: "pat_123456"
+        name:
+          type: string
+          description: 환자 이름
+          example: "홍길동"
+        phoneNumber:
+          type: string
+          description: 전화번호 (복호화됨)
+          example: "010-1234-5678"
+        birthYearMonth:
+          type: string
+          description: 생년월 (YYYYMM)
+          example: "199001"
+        ssn:
+          type: string
+          description: 주민등록번호 (복호화됨)
+          example: "900101-1234567"
+        notes:
+          type: string
+          description: 특이사항
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+
+    Doctor:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          description: 진료의 ID (UUID)
+          example: "doc_789012"
+        name:
+          type: string
+          description: 진료의 이름
+          example: "김한의"
+        specialization:
+          type: string
+          description: 전문 분야
+          example: "침구과"
+        licenseNumber:
+          type: string
+          description: 면허 번호
+          example: "12345"
+        isActive:
+          type: boolean
+          description: 활성 상태
+          default: true
+        notes:
+          type: string
+          description: 특이사항
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+
+    Visit:
+      type: object
+      required:
+        - id
+        - patientId
+        - doctorId
+        - checkInTime
+      properties:
+        id:
+          type: string
+          description: 내원 ID (UUID)
+          example: "vis_123456"
+        patientId:
+          type: string
+          description: 환자 ID
+          example: "pat_123456"
+        doctorId:
+          type: string
+          description: 진료의 ID
+          example: "doc_789012"
+        appointmentId:
+          type: string
+          description: 관련 예약 ID
+          example: "apt_123456"
+        checkInTime:
+          type: string
+          format: date-time
+          description: 체크인 시간
+        completedAt:
+          type: string
+          format: date-time
+          description: 진료 완료 시간
+        visitType:
+          type: string
+          enum: [first, follow-up]
+          description: 내원 유형
+          example: "first"
+        chiefComplaint:
+          type: string
+          description: 주 증상
+          example: "허리 통증"
+        diagnosis:
+          type: string
+          description: 진단
+        treatment:
+          type: string
+          description: 치료 내용
+        notes:
+          type: string
+          description: 특이사항
+        patient$:
+          type: object
+          description: 환자 정보 (populated)
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        doctor$:
+          type: object
+          description: 진료의 정보 (populated)
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: 에러 타입
+          example: E_DUPLICATED
+        message:
+          type: string
+          description: 에러 메시지
+          example: Doctor already has an appointment at this time
+        code:
+          type: string
+          description: 에러 코드
+          example: E_DUPLICATED
+        statusCode:
+          type: integer
+          description: HTTP 상태 코드
+          example: 409
+
+  responses:
+    BadRequest:
+      description: 잘못된 요청
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: E_INVALID_INPUT
+            message: Invalid input parameters
+            code: E_INVALID_INPUT
+            statusCode: 400
+
+    NotFound:
+      description: 리소스를 찾을 수 없음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: E_NOT_FOUND
+            message: Appointment not found
+            code: E_NOT_FOUND
+            statusCode: 404
+
+    Conflict:
+      description: 충돌 (중복 예약 등)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: E_DUPLICATED
+            message: Doctor already has an appointment at this time
+            code: E_DUPLICATED
+            statusCode: 409
+
+    InternalError:
+      description: 서버 내부 오류
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: E_INTERNAL
+            message: Internal server error
+            code: E_INTERNAL
+            statusCode: 500
