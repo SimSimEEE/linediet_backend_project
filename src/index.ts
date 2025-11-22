@@ -45,8 +45,8 @@ export const lambda = async (event: any, context: any) => {
  * Express server entry
  */
 export const express = () => {
-    const { createExpressServer } = require('./express');
-    return createExpressServer();
+    const { startServer } = require('./express');
+    return startServer();
 };
 
 /**

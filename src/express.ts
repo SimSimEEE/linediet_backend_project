@@ -18,7 +18,6 @@ import { _log, $U } from './cores/commons';
  */
 export const createExpressServer = () => {
     const app = express();
-    const port = $U.env('PORT', '8806');
 
     // Middleware
     app.use(cors());
@@ -75,7 +74,16 @@ export const createExpressServer = () => {
     app.put('/visits/:id', visitController.update);
     app.post('/visits/:id/complete', visitController.complete);
 
-    // Start server
+    return app;
+};
+
+/**
+ * Start Express server (for standalone execution)
+ */
+export const startServer = () => {
+    const app = createExpressServer();
+    const port = $U.env('PORT', '8806');
+
     app.listen(port, () => {
         _log(`[Express] Server running on port ${port}`);
         _log(`[Express] Environment: ${$U.env('STAGE', 'local')}`);
@@ -84,4 +92,4 @@ export const createExpressServer = () => {
     return app;
 };
 
-export default { createExpressServer };
+export default { createExpressServer, startServer };
