@@ -1,0 +1,424 @@
+#------------------------------------------------
+# Serverless Configuration for Appointment API
+#------------------------------------------------
+service: linediet-appointment-api
+
+frameworkVersion: "3"
+
+plugins:
+  - serverless-offline
+  - serverless-aws-documentation
+  - serverless-prune-plugin
+  - '@cruglobal/serverless-merge-config'
+
+#------------------------------------------------
+# Custom Configuration
+#------------------------------------------------
+custom:
+  CORE:
+    profile: ${param:profile, 'dev'}
+    region: ${opt:region, 'ap-northeast-2'}
+    stage: ${opt:stage, 'dev'}
+    env: ${param:env, './env/dev.yml'}
+  CONF: ${file(./env/config.js):CONF}
+  
+  serverless-offline:
+    httpPort: 8806
+  
+  documentation: ${file(./swagger/documentation.yml):documentation}
+  
+  #------------------------------------------------
+  # DynamoDB Tables
+  #------------------------------------------------
+  patientTable:
+    local: appointment-patients-dev
+    dev: appointment-patients-dev
+    prod: appointment-patients
+  
+  doctorTable:
+    local: appointment-doctors-dev
+    dev: appointment-doctors-dev
+    prod: appointment-doctors
+  
+  appointmentTable:
+    local: appointment-appointments-dev
+    dev: appointment-appointments-dev
+    prod: appointment-appointments
+  
+  visitTable:
+    local: appointment-visits-dev
+    dev: appointment-visits-dev
+    prod: appointment-visits
+  
+  #------------------------------------------------
+  # SNS & SQS
+  #------------------------------------------------
+  topicName:
+    local: appointment-sns-dev
+    dev: appointment-sns-dev
+    prod: appointment-sns
+  
+  queueName:
+    local: appointment-sqs-dev
+    dev: appointment-sqs-dev
+    prod: appointment-sqs
+  
+  #------------------------------------------------
+  # pruning old versions
+  #------------------------------------------------
+  prune:
+    automatic: true
+    number: 3
+  
+  #------------------------------------------------
+  # CORS Default
+  #------------------------------------------------
+  cors:
+    origin: "*"
+    headers:
+      - Authorization
+      - Content-Type
+      - X-Amz-Date
+      - X-Amz-Security-Token
+      - X-Amz-User-Agent
+      - X-Api-Key
+      - X-Timezone
+    allowCredentials: true
+
+#==============================================================
+# Provider
+#--------------------------------------------------------------
+provider:
+  name: aws
+  profile: ${param:profile, 'dev'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 180
+  runtime: nodejs20.x
+  region: ${self:custom.CORE.region}
+  
+  # Lambda function's IAM Role
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - cloudwatch:PutMetricData
+        - lambda:InvokeFunction
+        - ec2:CreateNetworkInterface
+        - ec2:DescribeNetworkInterfaces
+        - ec2:AttachNetworkInterface
+        - ec2:DeleteNetworkInterface
+        - ec2:DetachNetworkInterface
+        - ec2:ModifyNetworkInterfaceAttribute
+        - ec2:ResetNetworkInterfaceAttribute
+      Resource: "*"
+    
+    # DynamoDB
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - dynamodb:BatchGetItem
+        - dynamodb:BatchWriteItem
+        - dynamodb:DescribeTable
+      Resource:
+        - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.patientTable.${self:custom.CORE.stage}}"
+        - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.patientTable.${self:custom.CORE.stage}}/index/*"
+        - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.doctorTable.${self:custom.CORE.stage}}"
+        - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.doctorTable.${self:custom.CORE.stage}}/index/*"
+        - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.appointmentTable.${self:custom.CORE.stage}}"
+        - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.appointmentTable.${self:custom.CORE.stage}}/index/*"
+        - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.visitTable.${self:custom.CORE.stage}}"
+        - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.visitTable.${self:custom.CORE.stage}}/index/*"
+    
+    # SNS & SQS
+    - Effect: Allow
+      Action:
+        - sns:Publish
+        - sqs:SendMessage
+        - sqs:DeleteMessage
+        - sqs:ReceiveMessage
+        - sqs:GetQueueAttributes
+      Resource: "*"
+  
+  # Environment variables
+  environment:
+    DEFAULT_REGION: '${self:provider.region}'
+    STAGE: '${self:custom.CORE.stage}'
+    TZ: 'Asia/Seoul'
+    PATIENT_TABLE: '${self:custom.patientTable.${self:custom.CORE.stage}}'
+    DOCTOR_TABLE: '${self:custom.doctorTable.${self:custom.CORE.stage}}'
+    APPOINTMENT_TABLE: '${self:custom.appointmentTable.${self:custom.CORE.stage}}'
+    VISIT_TABLE: '${self:custom.visitTable.${self:custom.CORE.stage}}'
+    SNS_TOPIC_ARN: 'arn:aws:sns:${self:provider.region}:${aws:accountId}:${self:custom.topicName.${self:custom.CORE.stage}}'
+    SQS_QUEUE_URL: 'https://sqs.${self:provider.region}.amazonaws.com/${aws:accountId}/${self:custom.queueName.${self:custom.CORE.stage}}'
+
+#==============================================================
+# Functions
+#--------------------------------------------------------------
+functions:
+  lambda:
+    handler: handler.lambda
+    timeout: 30
+    events:
+      # Cron job for no-show detection (every 5 minutes)
+      - schedule:
+          name: appointment-noshow-detection-${self:custom.CORE.stage}
+          description: 'Detect and mark no-show appointments every 5 minutes'
+          rate: 'cron(0/5 * * * ? *)'
+          enabled: true
+          input:
+            cron:
+              name: NO_SHOW_DETECTION
+              stage: ${self:custom.CORE.stage}
+      
+      # REST API
+      - http:
+          path: /
+          method: get
+          cors: true
+      
+      # Health check
+      - http:
+          path: /health
+          method: get
+          cors: true
+      
+      # Patients
+      - http:
+          path: /patients
+          method: get
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /patients/{id}
+          method: get
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /patients
+          method: post
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /patients/{id}
+          method: put
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /patients/{id}
+          method: delete
+          cors: ${self:custom.cors, true}
+      
+      # Doctors
+      - http:
+          path: /doctors
+          method: get
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /doctors/{id}
+          method: get
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /doctors
+          method: post
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /doctors/{id}
+          method: put
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /doctors/{id}
+          method: delete
+          cors: ${self:custom.cors, true}
+      
+      # Appointments
+      - http:
+          path: /appointments
+          method: get
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /appointments/{id}
+          method: get
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /appointments
+          method: post
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /appointments/{id}
+          method: put
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /appointments/{id}
+          method: delete
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /appointments/{id}/cancel
+          method: post
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /appointments/search
+          method: post
+          cors: ${self:custom.cors, true}
+      
+      # Visits
+      - http:
+          path: /visits
+          method: get
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /visits/{id}
+          method: get
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /visits
+          method: post
+          cors: ${self:custom.cors, true}
+      - http:
+          path: /visits/{id}
+          method: put
+          cors: ${self:custom.cors, true}
+
+#--------------------------------------------------------------
+# Package Configuration
+#--------------------------------------------------------------
+package:
+  exclude:
+    - ./**
+    - '!node_modules/**'
+  include:
+    - handler.js
+    - package.json
+    - dist/**
+    - data/**
+    - env/**
+  excludeDevDependencies: true
+
+#==============================================================
+# Resources
+#--------------------------------------------------------------
+resources:
+  Resources:
+    # SNS Topic
+    AppointmentTopic:
+      Type: 'AWS::SNS::Topic'
+      Properties:
+        TopicName: '${self:custom.topicName.${self:custom.CORE.stage}}'
+    
+    # SQS Queue
+    AppointmentQueue:
+      Type: 'AWS::SQS::Queue'
+      Properties:
+        QueueName: '${self:custom.queueName.${self:custom.CORE.stage}}'
+        MessageRetentionPeriod: 1800
+        VisibilityTimeout: 300
+        MaximumMessageSize: 4096
+        DelaySeconds: 3
+        ReceiveMessageWaitTimeSeconds: 20
+    
+    # Patient Table
+    PatientTable:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        TableName: '${self:custom.patientTable.${self:custom.CORE.stage}}'
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: phoneNumber
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: phoneNumber-index
+            KeySchema:
+              - AttributeName: phoneNumber
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+    
+    # Doctor Table
+    DoctorTable:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        TableName: '${self:custom.doctorTable.${self:custom.CORE.stage}}'
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+    
+    # Appointment Table
+    AppointmentTable:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        TableName: '${self:custom.appointmentTable.${self:custom.CORE.stage}}'
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: doctorId
+            AttributeType: S
+          - AttributeName: appointmentDate
+            AttributeType: S
+          - AttributeName: patientId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: doctorId-appointmentDate-index
+            KeySchema:
+              - AttributeName: doctorId
+                KeyType: HASH
+              - AttributeName: appointmentDate
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+          - IndexName: patientId-appointmentDate-index
+            KeySchema:
+              - AttributeName: patientId
+                KeyType: HASH
+              - AttributeName: appointmentDate
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+          - IndexName: appointmentDate-index
+            KeySchema:
+              - AttributeName: appointmentDate
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+    
+    # Visit Table
+    VisitTable:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        TableName: '${self:custom.visitTable.${self:custom.CORE.stage}}'
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: patientId
+            AttributeType: S
+          - AttributeName: checkInTime
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: patientId-checkInTime-index
+            KeySchema:
+              - AttributeName: patientId
+                KeyType: HASH
+              - AttributeName: checkInTime
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
