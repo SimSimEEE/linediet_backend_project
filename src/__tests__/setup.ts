@@ -61,10 +61,17 @@ jest.mock('aws-sdk', () => {
                             const store = getTableStore(params.TableName);
                             const existing = store.get(params.Key.id);
                             if (existing) {
-                                // Handle UpdateExpression properly
+                                // Handle UpdateExpression properly - remove ':' prefix from attribute values
+                                const updates: any = {};
+                                if (params.ExpressionAttributeValues) {
+                                    for (const [key, value] of Object.entries(params.ExpressionAttributeValues)) {
+                                        const cleanKey = key.replace(':', '');
+                                        updates[cleanKey] = value;
+                                    }
+                                }
                                 const updated = {
                                     ...existing,
-                                    ...params.ExpressionAttributeValues,
+                                    ...updates,
                                 };
                                 store.set(params.Key.id, updated);
                                 return { Attributes: updated };
@@ -108,13 +115,11 @@ jest.mock('aws-sdk', () => {
     };
 });
 
-// Clear data between tests
-beforeEach(() => {
-    // DO NOT clear mocks - we need them to persist
-    // Clear all table stores
-    mockDataStore.forEach((store) => store.clear());
-    console.log('[SETUP] Cleared all mock data stores');
-});
-
 // Export utilities for tests
 export { mockDataStore, getTableStore };
+
+// Clear function for tests to use explicitly
+export const clearAllMockData = () => {
+    mockDataStore.forEach((store) => store.clear());
+    console.log('[SETUP] Cleared all mock data stores');
+};
