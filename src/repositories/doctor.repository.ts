@@ -24,52 +24,29 @@ export class DoctorRepository extends BaseRepository<DoctorModel> {
      * Get all active doctors
      */
     async getActiveDoctors(options?: QueryOptions): Promise<QueryResult<DoctorModel>> {
-        const params = {
-            TableName: this.tableName,
-            FilterExpression: 'isActive = :isActive AND attribute_not_exists(deletedAt)',
-            ExpressionAttributeValues: {
+        return this.scanWithFilter(
+            'isActive = :isActive AND attribute_not_exists(deletedAt)',
+            {
                 ':isActive': true,
             },
-            Limit: options?.limit || 100,
-        };
-
-        try {
-            const result = await (this as any).dynamoDB.scan(params).promise();
-            return {
-                items: (result.Items as DoctorModel[]) || [],
-                nextToken: result.LastEvaluatedKey ? JSON.stringify(result.LastEvaluatedKey) : undefined,
-                count: result.Count || 0,
-            };
-        } catch (error) {
-            throw error;
-        }
+            undefined,
+            options,
+        );
     }
 
     /**
      * Search doctors by name
      */
     async searchByName(name: string, options?: QueryOptions): Promise<QueryResult<DoctorModel>> {
-        const params = {
-            TableName: this.tableName,
-            FilterExpression: 'contains(#name, :name) AND attribute_not_exists(deletedAt)',
-            ExpressionAttributeNames: {
-                '#name': 'name',
-            },
-            ExpressionAttributeValues: {
+        return this.scanWithFilter(
+            'contains(#name, :name) AND attribute_not_exists(deletedAt)',
+            {
                 ':name': name,
             },
-            Limit: options?.limit || 100,
-        };
-
-        try {
-            const result = await (this as any).dynamoDB.scan(params).promise();
-            return {
-                items: (result.Items as DoctorModel[]) || [],
-                nextToken: result.LastEvaluatedKey ? JSON.stringify(result.LastEvaluatedKey) : undefined,
-                count: result.Count || 0,
-            };
-        } catch (error) {
-            throw error;
-        }
+            {
+                '#name': 'name',
+            },
+            options,
+        );
     }
 }

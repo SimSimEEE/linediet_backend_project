@@ -39,27 +39,15 @@ export class PatientRepository extends BaseRepository<PatientModel> {
      * Search patients by name (partial match using scan)
      */
     async searchByName(name: string, options?: QueryOptions): Promise<QueryResult<PatientModel>> {
-        const params = {
-            TableName: this.tableName,
-            FilterExpression: 'contains(#name, :name) AND attribute_not_exists(deletedAt)',
-            ExpressionAttributeNames: {
-                '#name': 'name',
-            },
-            ExpressionAttributeValues: {
+        return this.scanWithFilter(
+            'contains(#name, :name) AND attribute_not_exists(deletedAt)',
+            {
                 ':name': name,
             },
-            Limit: options?.limit || 100,
-        };
-
-        try {
-            const result = await (this as any).dynamoDB.scan(params).promise();
-            return {
-                items: (result.Items as PatientModel[]) || [],
-                nextToken: result.LastEvaluatedKey ? JSON.stringify(result.LastEvaluatedKey) : undefined,
-                count: result.Count || 0,
-            };
-        } catch (error) {
-            throw error;
-        }
+            {
+                '#name': 'name',
+            },
+            options,
+        );
     }
 }
