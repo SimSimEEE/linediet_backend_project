@@ -22,12 +22,12 @@ info:
     name: MIT
 
 servers:
-  - url: https://api.linediet.com/v1
-    description: Production server
+  - url: http://localhost:8809
+    description: Local development server
   - url: https://dev-api.linediet.com/v1
     description: Development server
-  - url: http://localhost:8806
-    description: Local development server
+  - url: https://api.linediet.com/v1
+    description: Production server
 
 tags:
   - name: Appointments
@@ -67,9 +67,10 @@ paths:
 
   /health:
     get:
-      summary: 헬스체크
+      summary: 기본 헬스체크
       tags:
         - Health
+      description: 서버의 기본 상태를 확인합니다.
       responses:
         '200':
           description: 서버 상태 정상
@@ -84,6 +85,150 @@ paths:
                   timestamp:
                     type: string
                     format: date-time
+                  service:
+                    type: string
+                    example: linediet-appointment-api
+                  version:
+                    type: string
+                    example: 1.0.0
+        '500':
+          description: 서버 오류
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ERROR
+                  timestamp:
+                    type: string
+                    format: date-time
+                  error:
+                    type: string
+
+  /health/db:
+    get:
+      summary: 데이터베이스 헬스체크
+      tags:
+        - Health
+      description: |
+        DynamoDB 연결 상태와 모든 테이블의 접근 가능 여부를 확인합니다.
+        
+        **확인 항목:**
+        - doctors 테이블
+        - patients 테이블
+        - appointments 테이블
+        - visits 테이블
+        
+        모든 테이블이 정상이면 200, 일부 테이블에 문제가 있으면 503을 반환합니다.
+      responses:
+        '200':
+          description: 모든 테이블 정상
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: OK
+                  timestamp:
+                    type: string
+                    format: date-time
+                  database:
+                    type: object
+                    properties:
+                      connected:
+                        type: boolean
+                        example: true
+                      tables:
+                        type: object
+                        properties:
+                          doctors:
+                            type: boolean
+                            example: true
+                          patients:
+                            type: boolean
+                            example: true
+                          appointments:
+                            type: boolean
+                            example: true
+                          visits:
+                            type: boolean
+                            example: true
+              example:
+                status: OK
+                timestamp: '2025-01-24T14:00:00+09:00'
+                database:
+                  connected: true
+                  tables:
+                    doctors: true
+                    patients: true
+                    appointments: true
+                    visits: true
+        '503':
+          description: 데이터베이스 연결 실패 또는 일부 테이블 접근 불가
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [DEGRADED, ERROR]
+                  timestamp:
+                    type: string
+                    format: date-time
+                  database:
+                    type: object
+                    properties:
+                      connected:
+                        type: boolean
+                      tables:
+                        type: object
+                        properties:
+                          doctors:
+                            type: boolean
+                          patients:
+                            type: boolean
+                          appointments:
+                            type: boolean
+                          visits:
+                            type: boolean
+                      errors:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            table:
+                              type: string
+                            error:
+                              type: string
+                      error:
+                        type: string
+              examples:
+                degraded:
+                  value:
+                    status: DEGRADED
+                    timestamp: '2025-01-24T14:00:00+09:00'
+                    database:
+                      connected: true
+                      tables:
+                        doctors: true
+                        patients: false
+                        appointments: true
+                        visits: true
+                      errors:
+                        - table: patients
+                          error: 'Cannot do operations on a non-existent table'
+                connectionError:
+                  value:
+                    status: ERROR
+                    timestamp: '2025-01-24T14:00:00+09:00'
+                    database:
+                      connected: false
+                      error: 'Connection timeout'
 
   /appointments:
     get:
