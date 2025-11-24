@@ -7,10 +7,16 @@
  */
 import express from 'express';
 import cors from 'cors';
+import swaggerUi from 'swagger-ui-express';
+import swaggerJsdoc from 'swagger-jsdoc';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as yaml from 'js-yaml';
 import { AppointmentController } from './controllers/appointment.controller';
 import { PatientController } from './controllers/patient.controller';
 import { DoctorController } from './controllers/doctor.controller';
 import { VisitController } from './controllers/visit.controller';
+import { HealthController } from './controllers/health.controller';
 import { _log, $U } from './cores/commons';
 
 /**
@@ -24,11 +30,38 @@ export const createExpressServer = () => {
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
+    // Swagger Configuration
+    const swaggerOptions: swaggerJsdoc.Options = {
+        definition: {
+            openapi: '3.0.0',
+            info: {
+                title: 'LineDiet Appointment API',
+                version: '1.0.0',
+                description: '한의원 진료 예약 및 관리 시스템 API',
+                contact: {
+                    name: 'API Support',
+                    email: 'support@linediet.com',
+                },
+            },
+            servers: [
+                {
+                    url: 'http://localhost:8809',
+                    description: 'Development server',
+                },
+            ],
+        },
+        apis: ['./swagger/*.yml'],
+    };
+
+    const swaggerSpec = swaggerJsdoc(swaggerOptions);
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
     // Controllers
     const appointmentController = new AppointmentController();
     const patientController = new PatientController();
     const doctorController = new DoctorController();
     const visitController = new VisitController();
+    const healthController = new HealthController();
 
     // Routes
     app.get('/', (req, res) => {
@@ -39,9 +72,8 @@ export const createExpressServer = () => {
         });
     });
 
-    app.get('/health', (req, res) => {
-        res.json({ status: 'OK', timestamp: new Date().toISOString() });
-    });
+    app.get('/health', healthController.basic);
+    app.get('/health/db', healthController.database);
 
     // Appointment routes
     app.post('/appointments', appointmentController.create);
@@ -82,7 +114,7 @@ export const createExpressServer = () => {
  */
 export const startServer = () => {
     const app = createExpressServer();
-    const port = $U.env('PORT', '8806');
+    const port = $U.env('PORT', '8809');
 
     app.listen(port, () => {
         _log(`[Express] Server running on port ${port}`);
