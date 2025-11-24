@@ -23,7 +23,7 @@ custom:
   CONF: ${file(./env/config.js):CONF}
   
   serverless-offline:
-    httpPort: 8806
+    httpPort: 8809
   
   documentation: ${file(./swagger/documentation.yml):documentation}
   
