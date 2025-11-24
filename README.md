@@ -316,6 +316,33 @@ curl http://localhost:8809/health
 
 # 예상 응답:
 # {"status":"OK","timestamp":"2025-01-25T10:30:00+09:00","environment":"local"}
+```
+
+## API 테스트
+
+### Swagger UI로 테스트
+
+1. **로컬 서버 실행**:
+   ```bash
+   npm run express.dev
+   ```
+
+2. **Swagger UI 접속**:
+   브라우저에서 http://localhost:8809/api-docs 접속 (향후 구현 예정)
+   
+   현재는 `swagger/documentation.yml` 파일을 Swagger Editor에서 확인:
+   - https://editor.swagger.io 접속
+   - `swagger/documentation.yml` 내용 복사하여 붙여넣기
+
+3. **API 테스트 실행**:
+   - 각 엔드포인트 확장
+   - "Try it out" 클릭
+   - 파라미터 입력
+   - "Execute" 클릭하여 실행
+
+### curl로 테스트
+
+더 자세한 API 테스트 가이드는 [`docs/SWAGGER_TEST_GUIDE.md`](docs/SWAGGER_TEST_GUIDE.md)를 참조하세요.
 
 ## API 사용 예시
 

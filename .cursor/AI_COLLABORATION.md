@@ -19,9 +19,6 @@ Database: DynamoDB
 Design Patterns & Architecture: Manager, Proxy, Transformer, Strategy,
 Factory, Controller, Repository, Template Method, Chain of Responsibility 
 패턴을 활용한 다층 아키텍처 설계 및 구현
-
-이 스펙으로 과제 개발해주고, 디자인 패턴 및 코드 컨벤션 유지해서 해줘 
-코드 패턴은 ssocio-kiosk-api 참고해서 작업해줘, lemon-core는 쓰지 말고
 ```
 
 #### 점진적 구현 요청
@@ -40,7 +37,6 @@ Factory, Controller, Repository, Template Method, Chain of Responsibility
 
 #### 파일 첨부
 - 참조할 파일을 Cursor의 '@' 기능으로 첨부
-- ssocio-kiosk-api의 패턴 파일들 참조 제공
 - package.json, tsconfig.json 등 설정 파일 공유
 
 #### 문서 참조
@@ -104,9 +100,6 @@ Swagger/OpenAPI 3.0 명세서 작성해줘
    - ❌ "전체 프로젝트 만들어줘"
    - ✅ "먼저 모델 정의 → Repository → Service → Controller 순서로"
 
-4. **패턴 참조**
-   - ❌ "CRUD 만들어줘"
-   - ✅ "ssocio-kiosk-api의 Repository 패턴 참고해서 만들어줘"
 
 ### 검증 단계
 
@@ -122,7 +115,6 @@ Swagger/OpenAPI 3.0 명세서 작성해줘
 
 1. **참조 코드 제공의 중요성**
    - 원하는 패턴의 예제 코드를 제공하면 일관성 있는 코드 생성
-   - ssocio-kiosk-api 참조로 동일한 아키텍처 패턴 적용 성공
 
 2. **점진적 구현**
    - 한 번에 모든 것을 요청하면 놓치는 부분 발생
