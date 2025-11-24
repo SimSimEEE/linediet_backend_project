@@ -7,13 +7,14 @@
  */
 import { PatientService } from './patient.service';
 import { PatientRepository } from '../repositories';
-import { encrypt, decrypt } from '../utils/encryption';
+import { encrypt, decrypt, hash } from '../utils/encryption';
 
 // Mock dependencies
 jest.mock('../repositories');
 jest.mock('../utils/encryption', () => ({
     encrypt: jest.fn((value: string) => `encrypted_${value}`),
     decrypt: jest.fn((value: string) => value.replace('encrypted_', '')),
+    hash: jest.fn((value: string) => `hash_${value}`),
 }));
 
 describe('PatientService', () => {
@@ -55,11 +56,12 @@ describe('PatientService', () => {
             const result = await service.createPatient(patientData);
 
             // Assert
-            expect(encrypt).toHaveBeenCalledWith(patientData.phoneNumber);
+            expect(encrypt).toHaveBeenCalledWith('01012345678'); // Normalized (hyphens removed)
             expect(encrypt).toHaveBeenCalledWith(patientData.ssn);
             expect(patientRepo.create).toHaveBeenCalledWith({
                 name: patientData.name,
-                phoneNumber: 'encrypted_010-1234-5678',
+                phoneNumber: 'encrypted_01012345678',
+                phoneNumberHash: 'hash_01012345678',
                 ssn: 'encrypted_123456-1234567',
                 birthYearMonth: patientData.birthYearMonth,
                 notes: undefined,
@@ -88,7 +90,7 @@ describe('PatientService', () => {
             const result = await service.createPatient(patientData);
 
             // Assert
-            expect(encrypt).toHaveBeenCalledWith(patientData.phoneNumber);
+            expect(encrypt).toHaveBeenCalledWith('01099998888'); // Normalized (hyphens removed)
             expect(encrypt).not.toHaveBeenCalledWith(undefined);
             expect(result.ssn).toBeUndefined();
         });
@@ -175,9 +177,10 @@ describe('PatientService', () => {
             await service.updatePatient('patient-123', { phoneNumber: '010-9999-9999' });
 
             // Assert
-            expect(encrypt).toHaveBeenCalledWith('010-9999-9999');
+            expect(encrypt).toHaveBeenCalledWith('01099999999'); // Normalized (hyphens removed)
             expect(patientRepo.update).toHaveBeenCalledWith('patient-123', {
-                phoneNumber: 'encrypted_010-9999-9999',
+                phoneNumber: 'encrypted_01099999999',
+                phoneNumberHash: 'hash_01099999999',
             });
         });
 
@@ -244,13 +247,14 @@ describe('PatientService', () => {
         it('should search by encrypted phone number', async () => {
             // Arrange
             const phoneNumber = '010-1234-5678';
-            patientRepo.findByPhoneNumber.mockResolvedValue({
+            patientRepo.findByPhoneHash.mockResolvedValue({
                 items: [
                     {
                         type: 'patient',
                         id: 'patient-123',
                         name: '홍길동',
-                        phoneNumber: 'encrypted_010-1234-5678',
+                        phoneNumber: 'encrypted_01012345678',
+                        phoneNumberHash: 'hash_01012345678',
                         createdAt: '2024-01-15T10:00:00+09:00',
                         updatedAt: '2024-01-15T10:00:00+09:00',
                     },
@@ -262,8 +266,8 @@ describe('PatientService', () => {
             const result = await service.searchPatients({ phoneNumber });
 
             // Assert
-            expect(encrypt).toHaveBeenCalledWith(phoneNumber);
-            expect(patientRepo.findByPhoneNumber).toHaveBeenCalledWith('encrypted_010-1234-5678');
+            expect(hash).toHaveBeenCalledWith('01012345678'); // Normalized (hyphens removed)
+            expect(patientRepo.findByPhoneHash).toHaveBeenCalledWith('hash_01012345678');
             expect(result).toHaveLength(1);
         });
 

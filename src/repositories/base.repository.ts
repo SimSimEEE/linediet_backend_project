@@ -13,9 +13,22 @@ import { _log, _err, generateId, nowKST } from '../cores/commons';
 /**
  * DynamoDB Document Client
  */
-const dynamoDB = new DynamoDB.DocumentClient({
-    region: process.env.DEFAULT_REGION || 'ap-northeast-2',
-});
+const getDynamoDBConfig = () => {
+    const config: DynamoDB.DocumentClient.DocumentClientOptions & DynamoDB.Types.ClientConfiguration = {
+        region: process.env.DEFAULT_REGION || 'ap-northeast-2',
+    };
+
+    // For local development, use DynamoDB Local if available
+    if (process.env.LS === '1' || process.env.STAGE === 'local') {
+        config.endpoint = process.env.DYNAMODB_ENDPOINT || 'http://localhost:8000';
+        config.accessKeyId = 'local';
+        config.secretAccessKey = 'local';
+    }
+
+    return config;
+};
+
+const dynamoDB = new DynamoDB.DocumentClient(getDynamoDBConfig());
 
 /**
  * Query Options
@@ -285,6 +298,28 @@ export abstract class BaseRepository<T extends CoreModel<any>> {
             return (result.Responses?.[this.tableName] as T[]) || [];
         } catch (error) {
             _err(`[${this.modelType}] Batch get failed:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Check if table exists and is accessible
+     */
+    async checkTableExists(): Promise<boolean> {
+        try {
+            // Try to scan with limit 1 to check table accessibility
+            const params: DynamoDB.DocumentClient.ScanInput = {
+                TableName: this.tableName,
+                Limit: 1,
+            };
+            await dynamoDB.scan(params).promise();
+            return true;
+        } catch (error: any) {
+            if (error.code === 'ResourceNotFoundException') {
+                _log(`[${this.modelType}] Table not found: ${this.tableName}`);
+                return false;
+            }
+            _err(`[${this.modelType}] Table check failed:`, error);
             throw error;
         }
     }

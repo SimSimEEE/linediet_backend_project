@@ -8,7 +8,7 @@
  */
 import { PatientModel, PatientSearchCriteria } from '../models';
 import { PatientRepository } from '../repositories';
-import { encrypt, decrypt } from '../utils/encryption';
+import { encrypt, decrypt, hash } from '../utils/encryption';
 import { _log } from '../cores/commons';
 
 /**
@@ -36,14 +36,17 @@ export class PatientService {
             throw new Error('E_INVALID_INPUT: Name and phone number are required');
         }
 
-        // Encrypt personal information
-        const encryptedPhone = encrypt(data.phoneNumber);
+        // Normalize and encrypt personal information
+        const cleanPhone = data.phoneNumber.replace(/-/g, '');
+        const encryptedPhone = encrypt(cleanPhone);
+        const phoneHash = hash(cleanPhone);
         const encryptedSSN = data.ssn ? encrypt(data.ssn) : undefined;
 
         // Create patient
         const patient = await this.patientRepo.create({
             name: data.name,
             phoneNumber: encryptedPhone,
+            phoneNumberHash: phoneHash,
             birthYearMonth: data.birthYearMonth,
             ssn: encryptedSSN,
             notes: data.notes,
@@ -73,9 +76,11 @@ export class PatientService {
             throw new Error('E_NOT_FOUND: Patient not found');
         }
 
-        // Encrypt if personal info is being updated
+        // Normalize and encrypt if personal info is being updated
         if (updates.phoneNumber) {
-            updates.phoneNumber = encrypt(updates.phoneNumber);
+            const cleanPhone = updates.phoneNumber.replace(/-/g, '');
+            updates.phoneNumber = encrypt(cleanPhone);
+            updates.phoneNumberHash = hash(cleanPhone);
         }
         if (updates.ssn) {
             updates.ssn = encrypt(updates.ssn);
@@ -110,9 +115,16 @@ export class PatientService {
         let patients: PatientModel[] = [];
 
         if (criteria.phoneNumber) {
-            // Search by encrypted phone number
-            const encryptedPhone = encrypt(criteria.phoneNumber);
-            const result = await this.patientRepo.findByPhoneNumber(encryptedPhone);
+            // Use phone number hash for efficient searching
+            const cleanPhone = criteria.phoneNumber.replace(/-/g, '');
+            const phoneHash = hash(cleanPhone);
+
+            _log('[PatientService] Searching by phone hash:', { cleanPhone, phoneHash });
+
+            const result = await this.patientRepo.findByPhoneHash(phoneHash);
+
+            _log('[PatientService] Search result:', { count: result.items.length });
+
             patients = result.items;
         } else if (criteria.name) {
             // Search by name
@@ -130,10 +142,21 @@ export class PatientService {
      * Decrypt patient personal information
      */
     private decryptPatientInfo(patient: PatientModel): PatientModel {
-        return {
-            ...patient,
-            phoneNumber: decrypt(patient.phoneNumber),
-            ssn: patient.ssn ? decrypt(patient.ssn) : undefined,
-        };
+        try {
+            const decrypted = {
+                ...patient,
+                phoneNumber: decrypt(patient.phoneNumber),
+                ssn: patient.ssn ? decrypt(patient.ssn) : undefined,
+            };
+
+            // Remove internal hash field from response
+            delete (decrypted as any).phoneNumberHash;
+
+            _log('[PatientService] Decrypted patient:', { id: decrypted.id, hasPhone: !!decrypted.phoneNumber });
+            return decrypted;
+        } catch (error) {
+            _log('[PatientService] Decryption error:', error);
+            throw error;
+        }
     }
 }

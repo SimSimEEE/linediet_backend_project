@@ -33,6 +33,9 @@ export interface PatientModel extends CoreModel<'patient'> {
     /** Encrypted phone number */
     phoneNumber: string;
 
+    /** Phone number hash (for searching) */
+    phoneNumberHash?: string;
+
     /** Birth year-month (YYYYMM) */
     birthYearMonth?: string;
 

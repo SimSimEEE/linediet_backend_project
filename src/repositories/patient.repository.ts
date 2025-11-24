@@ -23,11 +23,24 @@ export class PatientRepository extends BaseRepository<PatientModel> {
      * Find patient by phone number (encrypted)
      */
     async findByPhoneNumber(phoneNumber: string, options?: QueryOptions): Promise<QueryResult<PatientModel>> {
-        return this.queryByIndex(
-            'phoneNumber-index',
-            'phoneNumber = :phoneNumber',
+        return this.scanWithFilter(
+            'phoneNumber = :phoneNumber AND attribute_not_exists(deletedAt)',
             {
                 ':phoneNumber': phoneNumber,
+            },
+            undefined,
+            options,
+        );
+    }
+
+    /**
+     * Find patient by phone number hash (for efficient searching)
+     */
+    async findByPhoneHash(phoneHash: string, options?: QueryOptions): Promise<QueryResult<PatientModel>> {
+        return this.scanWithFilter(
+            'phoneNumberHash = :phoneHash AND attribute_not_exists(deletedAt)',
+            {
+                ':phoneHash': phoneHash,
             },
             undefined,
             options,
