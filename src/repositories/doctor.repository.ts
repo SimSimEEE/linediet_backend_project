@@ -34,6 +34,13 @@ export class DoctorRepository extends BaseRepository<DoctorModel> {
     }
 
     /**
+     * Get all doctors (excluding soft-deleted)
+     */
+    async getAllDoctors(options?: QueryOptions): Promise<QueryResult<DoctorModel>> {
+        return this.scanWithFilter('attribute_not_exists(deletedAt)', {}, undefined, options);
+    }
+
+    /**
      * Search doctors by name
      */
     async searchByName(name: string, options?: QueryOptions): Promise<QueryResult<DoctorModel>> {

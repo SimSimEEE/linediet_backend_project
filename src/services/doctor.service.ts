@@ -85,13 +85,11 @@ export class DoctorService {
      * List all doctors
      */
     async listDoctors(limit: number = 100, activeOnly: boolean = false): Promise<DoctorModel[]> {
-        if (activeOnly) {
-            const result = await this.doctorRepo.getActiveDoctors({ limit });
-            return result.items;
-        }
+        const result = activeOnly
+            ? await this.doctorRepo.getActiveDoctors({ limit })
+            : await this.doctorRepo.getAllDoctors({ limit });
 
-        const result = await this.doctorRepo.scan({ limit });
-        return result.items.filter((d) => !d.deletedAt);
+        return result.items;
     }
 
     /**

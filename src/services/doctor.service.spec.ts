@@ -244,7 +244,7 @@ describe('DoctorService', () => {
     describe('listDoctors', () => {
         it('should return all doctors excluding deleted ones', async () => {
             // Arrange
-            doctorRepo.scan.mockResolvedValue({
+            doctorRepo.getAllDoctors.mockResolvedValue({
                 items: [
                     {
                         type: 'doctor',
@@ -254,23 +254,15 @@ describe('DoctorService', () => {
                         createdAt: '2024-01-15T10:00:00+09:00',
                         updatedAt: '2024-01-15T10:00:00+09:00',
                     },
-                    {
-                        type: 'doctor',
-                        id: 'doctor-2',
-                        name: '의사2',
-                        isActive: false,
-                        deletedAt: '2024-01-15T12:00:00+09:00',
-                        createdAt: '2024-01-15T10:00:00+09:00',
-                        updatedAt: '2024-01-15T10:00:00+09:00',
-                    },
                 ],
-                count: 2,
+                count: 1,
             });
 
             // Act
             const result = await service.listDoctors();
 
             // Assert
+            expect(doctorRepo.getAllDoctors).toHaveBeenCalledWith({ limit: 100 });
             expect(result).toHaveLength(1);
             expect(result[0].id).toBe('doctor-1');
         });
@@ -301,13 +293,13 @@ describe('DoctorService', () => {
 
         it('should use default limit of 100', async () => {
             // Arrange
-            doctorRepo.scan.mockResolvedValue({ items: [], count: 0 });
+            doctorRepo.getAllDoctors.mockResolvedValue({ items: [], count: 0 });
 
             // Act
             await service.listDoctors();
 
             // Assert
-            expect(doctorRepo.scan).toHaveBeenCalledWith({ limit: 100 });
+            expect(doctorRepo.getAllDoctors).toHaveBeenCalledWith({ limit: 100 });
         });
     });
 
