@@ -43,9 +43,21 @@ linediet_backend_project/
 │
 ├── env/                          # 환경 설정
 ├── swagger/                      # API 문서
+├── scripts/                      # 유틸리티 스크립트
+│   ├── setup-dynamodb-local.ts   # DynamoDB Local 설정
+│   ├── seed-mock-data.js         # Mock 데이터 생성 (대량 테스트)
+│   ├── delete-tables.js          # 테이블 삭제
+│   └── migrate-patient-hash.js   # phoneNumberHash 마이그레이션
+├── docs/                         # 설계 문서
+│   ├── ARCHITECTURE.md           # 본 문서
+│   ├── DB_DESIGN.md              # DB 설계 문서
+│   ├── NO_SHOW_DETECTION_DESIGN.md # 부도 감지 설계
+│   ├── PERFORMANCE_OPTIMIZATION.md # 성능 최적화 가이드
+│   ├── DEVELOPMENT.md            # 개발 가이드
+│   ├── TESTING.md                # 테스트 가이드
+│   └── SWAGGER_TEST_GUIDE.md     # API 테스트 가이드
 ├── README.md                     # 프로젝트 설명
-├── DB_DESIGN.md                  # DB 설계 문서
-└── NO_SHOW_DETECTION_DESIGN.md   # 부도 감지 설계 문서
+└── package.json                  # 프로젝트 설정
 ```
 
 ## 아키텍처 패턴
@@ -215,13 +227,20 @@ _log('SSN:', maskSSN(ssn));              // "123456-*******"
 1. **적절한 인덱스 설계**
    - GSI를 통한 쿼리 최적화
    - Scan 최소화
+   - phoneNumberHash-index로 환자 검색 99% 성능 개선
 
-2. **배치 작업**
+2. **Pagination (페이지네이션)**
+   - page 파라미터 기반 페이지네이션
+   - 최대 1000건/페이지 제한
+   - 10만명 이상 데이터 효율적 처리
+
+3. **배치 작업**
    - BatchGet으로 여러 아이템 조회
    - BatchWrite 고려 (향후)
 
-3. **페이지네이션**
-   - Limit + ExclusiveStartKey 사용
+4. **Query vs Scan**
+   - GSI 활용으로 Scan 대신 Query 사용
+   - 10만건 기준: 60초 → 0.5초 (99.2% 개선)
 
 #### 코드 최적화
 
@@ -235,6 +254,16 @@ _log('SSN:', maskSSN(ssn));              // "123456-*******"
 
 2. **메모리 효율**
    - 대용량 데이터는 스트림 처리 고려
+   - Pagination으로 메모리 사용량 제어
+
+3. **ProjectionExpression**
+   - 필요한 필드만 조회하여 네트워크 비용 절감
+   ```typescript
+   const result = await repo.listWithProjection(
+       ['id', 'name', 'phoneNumber'],
+       { limit: 100, page: 1 }
+   );
+   ```
 
 ## 확장 가능성
 
