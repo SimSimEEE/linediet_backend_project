@@ -57,7 +57,8 @@ export class DoctorController {
     list = async (req: Request, res: Response): Promise<void> => {
         try {
             const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
-            const activeOnly = req.query.activeOnly === 'true';
+            // activeOnly: undefined면 true (기본값), 명시적으로 'false'면 false
+            const activeOnly = req.query.activeOnly === undefined ? true : req.query.activeOnly === 'true';
             const doctors = await this.doctorService.listDoctors(limit, activeOnly);
             res.json({ items: doctors, count: doctors.length });
         } catch (error: any) {
